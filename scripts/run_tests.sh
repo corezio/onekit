@@ -16,6 +16,7 @@ COVERAGE_JSON="$COVERAGE_DIR/coverage.json"
 # Parse command line arguments
 VERBOSE=false
 FAST_MODE=false
+RACE_MODE=true
 for arg in "$@"; do
     case $arg in
         -v|--verbose)
@@ -26,11 +27,16 @@ for arg in "$@"; do
             FAST_MODE=true
             shift
             ;;
+        --no-race)
+            RACE_MODE=false
+            shift
+            ;;
         -h|--help)
             echo "Usage: $0 [OPTIONS]"
             echo "Options:"
             echo "  -v, --verbose    Run tests with verbose output"
             echo "  -f, --fast       Run tests without coverage (faster, cached)"
+            echo "      --no-race    Run coverage tests without the race detector"
             echo "  -h, --help       Show this help message"
             exit 0
             ;;
@@ -57,7 +63,11 @@ if [ "$FAST_MODE" = true ]; then
     echo -e "${BLUE}===========================================${NC}"
 else
     echo -e "${BLUE}===========================================${NC}"
-    echo -e "${BLUE}      Go Test Coverage & Race Analysis    ${NC}"
+    if [ "$RACE_MODE" = true ]; then
+        echo -e "${BLUE}      Go Test Coverage & Race Analysis    ${NC}"
+    else
+        echo -e "${BLUE}           Go Test Coverage Only          ${NC}"
+    fi
     echo -e "${BLUE}===========================================${NC}"
 fi
 echo
@@ -188,8 +198,15 @@ main() {
             exit 1
         fi
     else
-        echo -e "${BLUE}Running race-enabled coverage tests across all packages...${NC}"
-        if ! TESTING_MODE=true go test -race -coverprofile="$COVERAGE_PROFILE" -covermode=atomic "${test_args[@]}" $packages; then
+        local coverage_args=("-coverprofile=$COVERAGE_PROFILE")
+        if [ "$RACE_MODE" = true ]; then
+            echo -e "${BLUE}Running race-enabled coverage tests across all packages...${NC}"
+            coverage_args=("-race" "-coverprofile=$COVERAGE_PROFILE" "-covermode=atomic")
+        else
+            echo -e "${BLUE}Running coverage tests across all packages...${NC}"
+        fi
+
+        if ! TESTING_MODE=true go test "${coverage_args[@]}" "${test_args[@]}" $packages; then
             echo -e "${RED}FAIL: Tests failed${NC}"
             exit 1
         fi
