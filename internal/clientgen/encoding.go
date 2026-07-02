@@ -549,7 +549,9 @@ func (g *Generator) generateWrapperUnmarshalJSON(gf *protogen.GeneratedFile, ctx
 		gf.P("// Handle \"", jsonName, "\" using its custom unmarshaler")
 		gf.P("if rawVal, ok := raw[\"", jsonName, "\"]; ok {")
 		gf.P("inner := &", gf.QualifiedGoIdent(field.Message.GoIdent), "{}")
-		gf.P("if u, ok := any(inner).(interface{ UnmarshalJSONOnekit([]byte, protojson.UnmarshalOptions) error }); ok {")
+		gf.P(
+			"if u, ok := any(inner).(interface{ UnmarshalJSONOnekit([]byte, protojson.UnmarshalOptions) error }); ok {",
+		)
 		gf.P("if err := u.UnmarshalJSONOnekit(rawVal, opts); err != nil {")
 		gf.P("return err")
 		gf.P("}")

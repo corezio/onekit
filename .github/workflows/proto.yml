@@ -135,6 +135,12 @@ jobs:
         uses: bufbuild/buf-setup-action@v1
         with:
           version: latest
+
+      - name: Setup Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: '25.1'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Install protoc-gen-doc
         run: |

@@ -539,7 +539,7 @@ func (g *Generator) generateWrapperMarshalJSON(gf *protogen.GeneratedFile, ctx *
 // generateWrapperUnmarshalJSON generates an UnmarshalJSONOnekit that delegates nested
 // message parsing via the onekitUnmarshaler interface (propagating opts), then converts
 // back for protojson. Also emits a backward-compatible UnmarshalJSON wrapper.
-func (g *Generator) generateWrapperUnmarshalJSON(gf *protogen.GeneratedFile, ctx *Int64WrapperContext) {
+func (g *Generator) generateWrapperUnmarshalJSON(gf *protogen.GeneratedFile, ctx *Int64WrapperContext) { //nolint:funlen
 	msgName := ctx.Message.GoIdent.GoName
 
 	var nestedFieldNames []string
