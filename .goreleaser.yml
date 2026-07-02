@@ -3,9 +3,6 @@ version: 2
 before:
   hooks:
     - go mod download
-    - go fmt ./...
-    - go vet ./...
-    - ./scripts/run_tests.sh --fast
 
 builds:
   - id: protoc-gen-onekit-go-http

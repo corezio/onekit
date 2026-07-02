@@ -10,7 +10,7 @@ on:
 env:
   GO_VERSION: '1.26'
   BUF_VERSION: 'latest'
-  PROTOC_VERSION: '25.1'
+  PROTOC_VERSION: '35.1'
 
 jobs:
   lint:

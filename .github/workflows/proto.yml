@@ -139,7 +139,7 @@ jobs:
       - name: Setup Protoc
         uses: arduino/setup-protoc@v3
         with:
-          version: '25.1'
+          version: '35.1'
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Install protoc-gen-doc

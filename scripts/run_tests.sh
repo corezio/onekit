@@ -359,16 +359,18 @@ main() {
             exit 1
         fi
     else
-        # Coverage mode: always succeed, just report coverage
-        echo -e "${GREEN}OK: All tests passed! Coverage analysis complete.${NC}"
         if [ ${#failed_packages[@]} -gt 0 ]; then
-            echo -e "${YELLOW}Coverage could be improved in these packages:${NC}"
+            echo -e "${RED}FAIL: The following packages had test failures:${NC}"
             for package in "${failed_packages[@]}"; do
-                echo -e "${YELLOW}  - $package${NC}"
+                echo -e "${RED}  - $package${NC}"
             done
-            echo -e "${YELLOW}Tip: Consider adding more tests to improve coverage.${NC}"
+            echo
+            echo -e "${YELLOW}Tip: Fix the failing tests in the above packages.${NC}"
+            exit 1
         fi
-        exit 0  # Always succeed in coverage mode
+
+        echo -e "${GREEN}OK: All tests passed! Coverage analysis complete.${NC}"
+        exit 0
     fi
 }
 
