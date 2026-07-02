@@ -331,7 +331,7 @@ func (g *Generator) buildRPCRouteConfig(service *protogen.Service, method *proto
 	}
 
 	bodyField, err := annotations.GetBodyField(method)
-	if err != nil {
+	if err != nil && !annotations.IsNoBodyField(err) {
 		return nil, fmt.Errorf("service %s, method %s: %w", serviceName, methodName, err)
 	}
 
@@ -724,7 +724,12 @@ func (g *Generator) generatePathParamExtraction(p tscommon.Printer, cfg *rpcRout
 }
 
 // generateBodyParsing generates code to parse JSON request body.
-func (g *Generator) generateBodyParsing(p tscommon.Printer, cfg *rpcRouteConfig, method *protogen.Method, tsMethodName string) {
+func (g *Generator) generateBodyParsing(
+	p tscommon.Printer,
+	cfg *rpcRouteConfig,
+	method *protogen.Method,
+	tsMethodName string,
+) {
 	inputType := string(method.Input.Desc.Name())
 	if cfg.bodyFieldJSONName != "" {
 		// Body field selection: the JSON body is only the selected sub-message.

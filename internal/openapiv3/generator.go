@@ -906,7 +906,8 @@ func (g *Generator) processMethod(service *protogen.Service, method *protogen.Me
 		// selected sub-message rather than the whole input message. An invalid
 		// annotation is reported by the go-http generator, so fall back silently.
 		bodySchema := method.Input
-		if bodyField, err := annotations.GetBodyField(method); err == nil && bodyField != nil {
+		bodyField, err := annotations.GetBodyField(method)
+		if err == nil && bodyField != nil {
 			bodySchema = bodyField.Message
 		}
 		inputSchemaRef := fmt.Sprintf("#/components/schemas/%s", g.getSchemaName(bodySchema))

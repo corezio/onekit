@@ -255,7 +255,7 @@ func (g *Generator) generateService(gf *protogen.GeneratedFile, file *protogen.F
 		} else {
 			// Resolve body field selection (body: "<field>" annotation)
 			bodyField, bodyErr := annotations.GetBodyField(method)
-			if bodyErr != nil {
+			if bodyErr != nil && !annotations.IsNoBodyField(bodyErr) {
 				return bodyErr
 			}
 			bodyFieldName := ""

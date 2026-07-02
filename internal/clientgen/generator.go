@@ -333,7 +333,10 @@ func (g *Generator) generateRetryableStatusHelper(gf *protogen.GeneratedFile) {
 	gf.P("// 429 Too Many Requests, 502 Bad Gateway, 503 Service Unavailable, 504 Gateway Timeout.")
 	gf.P("func onekitIsRetryableStatus(status int) bool {")
 	gf.P("switch status {")
-	gf.P("case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:")
+	gf.P("case http.StatusTooManyRequests,")
+	gf.P("http.StatusBadGateway,")
+	gf.P("http.StatusServiceUnavailable,")
+	gf.P("http.StatusGatewayTimeout:")
 	gf.P("return true")
 	gf.P("}")
 	gf.P("return false")
@@ -596,7 +599,7 @@ func (g *Generator) generateRPCMethod(
 	cfg := g.buildRPCMethodConfig(service, method)
 
 	bodyField, err := annotations.GetBodyField(method)
-	if err != nil {
+	if err != nil && !annotations.IsNoBodyField(err) {
 		return err
 	}
 	if bodyField != nil {

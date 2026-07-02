@@ -30,7 +30,7 @@ type AuthType int32
 
 const (
 	// Not an authentication header (default).
-	AuthType_AUTH_TYPE_NONE AuthType = 0
+	AuthType_AUTH_TYPE_UNSPECIFIED AuthType = 0
 	// API key sent in this header (OpenAPI: type apiKey, in header).
 	AuthType_AUTH_TYPE_API_KEY AuthType = 1
 	// Bearer token (OpenAPI: type http, scheme bearer). Header name is
@@ -44,16 +44,16 @@ const (
 // Enum value maps for AuthType.
 var (
 	AuthType_name = map[int32]string{
-		0: "AUTH_TYPE_NONE",
+		0: "AUTH_TYPE_UNSPECIFIED",
 		1: "AUTH_TYPE_API_KEY",
 		2: "AUTH_TYPE_BEARER",
 		3: "AUTH_TYPE_BASIC",
 	}
 	AuthType_value = map[string]int32{
-		"AUTH_TYPE_NONE":    0,
-		"AUTH_TYPE_API_KEY": 1,
-		"AUTH_TYPE_BEARER":  2,
-		"AUTH_TYPE_BASIC":   3,
+		"AUTH_TYPE_UNSPECIFIED": 0,
+		"AUTH_TYPE_API_KEY":     1,
+		"AUTH_TYPE_BEARER":      2,
+		"AUTH_TYPE_BASIC":       3,
 	}
 )
 
@@ -102,8 +102,8 @@ type Header struct {
 	// Whether the header is deprecated
 	Deprecated bool `protobuf:"varint,7,opt,name=deprecated,proto3" json:"deprecated,omitempty"`
 	// Authentication semantics for this header. When set to a value other than
-	// AUTH_TYPE_NONE, the OpenAPI generator emits a securityScheme and security
-	// requirement for this header instead of a plain header parameter.
+	// AUTH_TYPE_UNSPECIFIED, the OpenAPI generator emits a securityScheme and
+	// security requirement for this header instead of a plain header parameter.
 	AuthType AuthType `protobuf:"varint,8,opt,name=auth_type,json=authType,proto3,enum=onekit.http.AuthType" json:"auth_type,omitempty"`
 	// Optional name for the generated securityScheme component.
 	// Defaults to a name derived from the header (e.g. "X-API-Key" -> "ApiKeyAuth").
@@ -195,7 +195,7 @@ func (x *Header) GetAuthType() AuthType {
 	if x != nil {
 		return x.AuthType
 	}
-	return AuthType_AUTH_TYPE_NONE
+	return AuthType_AUTH_TYPE_UNSPECIFIED
 }
 
 func (x *Header) GetAuthSchemeName() string {
@@ -348,9 +348,9 @@ const file_proto_onekit_http_headers_proto_rawDesc = "" +
 	"\x0eServiceHeaders\x12>\n" +
 	"\x10required_headers\x18\x01 \x03(\v2\x13.onekit.http.HeaderR\x0frequiredHeaders\"O\n" +
 	"\rMethodHeaders\x12>\n" +
-	"\x10required_headers\x18\x01 \x03(\v2\x13.onekit.http.HeaderR\x0frequiredHeaders*`\n" +
-	"\bAuthType\x12\x12\n" +
-	"\x0eAUTH_TYPE_NONE\x10\x00\x12\x15\n" +
+	"\x10required_headers\x18\x01 \x03(\v2\x13.onekit.http.HeaderR\x0frequiredHeaders*g\n" +
+	"\bAuthType\x12\x19\n" +
+	"\x15AUTH_TYPE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11AUTH_TYPE_API_KEY\x10\x01\x12\x14\n" +
 	"\x10AUTH_TYPE_BEARER\x10\x02\x12\x13\n" +
 	"\x0fAUTH_TYPE_BASIC\x10\x03:g\n" +

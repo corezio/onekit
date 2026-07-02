@@ -311,7 +311,7 @@ func (g *Generator) generateRPCMethod(p printer, service *protogen.Service, meth
 	cfg := g.buildRPCMethodConfig(service, method)
 
 	bodyField, err := annotations.GetBodyField(method)
-	if err != nil {
+	if err != nil && !annotations.IsNoBodyField(err) {
 		return err
 	}
 	if bodyField != nil {

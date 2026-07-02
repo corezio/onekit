@@ -118,7 +118,7 @@ func writeRPCMethod(p printer, service *protogen.Service, method *protogen.Metho
 	cfg := buildMethodConfig(service, method)
 
 	bodyField, err := annotations.GetBodyField(method)
-	if err != nil {
+	if err != nil && !annotations.IsNoBodyField(err) {
 		return err
 	}
 	if bodyField != nil {

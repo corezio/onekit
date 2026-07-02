@@ -12,7 +12,7 @@ option go_package = "github.com/1homsi/onekit/http;http";
 // plain header parameters. Runtime header validation is unaffected.
 enum AuthType {
   // Not an authentication header (default).
-  AUTH_TYPE_NONE = 0;
+  AUTH_TYPE_UNSPECIFIED = 0;
   // API key sent in this header (OpenAPI: type apiKey, in header).
   AUTH_TYPE_API_KEY = 1;
   // Bearer token (OpenAPI: type http, scheme bearer). Header name is
@@ -47,8 +47,8 @@ message Header {
   bool deprecated = 7;
 
   // Authentication semantics for this header. When set to a value other than
-  // AUTH_TYPE_NONE, the OpenAPI generator emits a securityScheme and security
-  // requirement for this header instead of a plain header parameter.
+  // AUTH_TYPE_UNSPECIFIED, the OpenAPI generator emits a securityScheme and
+  // security requirement for this header instead of a plain header parameter.
   AuthType auth_type = 8;
 
   // Optional name for the generated securityScheme component.

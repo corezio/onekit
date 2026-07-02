@@ -1,6 +1,7 @@
 package annotations
 
 import (
+	"errors"
 	"fmt"
 
 	"google.golang.org/protobuf/compiler/protogen"
@@ -9,6 +10,13 @@ import (
 
 	"github.com/1homsi/onekit/http"
 )
+
+// ErrNoBodyField means the HTTP body binding uses the whole request message.
+var ErrNoBodyField = errors.New("onekit: no selected body field")
+
+func IsNoBodyField(err error) bool {
+	return errors.Is(err, ErrNoBodyField)
+}
 
 // HTTPConfig represents the HTTP configuration for a method.
 type HTTPConfig struct {
@@ -65,7 +73,7 @@ func GetMethodHTTPConfig(method *protogen.Method) *HTTPConfig {
 func GetBodyField(method *protogen.Method) (*protogen.Field, error) {
 	cfg := GetMethodHTTPConfig(method)
 	if cfg == nil || cfg.Body == "" || cfg.Body == "*" {
-		return nil, nil
+		return nil, ErrNoBodyField
 	}
 	for _, field := range method.Input.Fields {
 		if string(field.Desc.Name()) != cfg.Body {

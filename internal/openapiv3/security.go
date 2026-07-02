@@ -13,9 +13,11 @@ import (
 // splitAuthHeaders partitions headers into authentication headers (auth_type set)
 // and plain headers. Auth headers become securitySchemes; plain headers become
 // regular header parameters.
-func splitAuthHeaders(headers []*http.Header) (authHeaders, plainHeaders []*http.Header) {
+func splitAuthHeaders(headers []*http.Header) ([]*http.Header, []*http.Header) {
+	authHeaders := make([]*http.Header, 0)
+	plainHeaders := make([]*http.Header, 0, len(headers))
 	for _, header := range headers {
-		if header.GetAuthType() != http.AuthType_AUTH_TYPE_NONE {
+		if header.GetAuthType() != http.AuthType_AUTH_TYPE_UNSPECIFIED {
 			authHeaders = append(authHeaders, header)
 			continue
 		}
@@ -68,7 +70,7 @@ func (g *Generator) registerSecurityScheme(name string, header *http.Header) {
 	case http.AuthType_AUTH_TYPE_BASIC:
 		scheme.Type = "http"
 		scheme.Scheme = "basic"
-	case http.AuthType_AUTH_TYPE_NONE:
+	case http.AuthType_AUTH_TYPE_UNSPECIFIED:
 		return
 	}
 
@@ -87,7 +89,7 @@ func securitySchemeName(header *http.Header) string {
 		return "BearerAuth"
 	case http.AuthType_AUTH_TYPE_BASIC:
 		return "BasicAuth"
-	case http.AuthType_AUTH_TYPE_API_KEY, http.AuthType_AUTH_TYPE_NONE:
+	case http.AuthType_AUTH_TYPE_API_KEY, http.AuthType_AUTH_TYPE_UNSPECIFIED:
 	}
 	name := strings.TrimPrefix(header.GetName(), "X-")
 	name = strings.TrimPrefix(name, "x-")
