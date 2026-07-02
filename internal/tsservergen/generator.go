@@ -290,14 +290,16 @@ type pathParamField struct {
 
 // rpcRouteConfig holds config for generating a route handler.
 type rpcRouteConfig struct {
-	serviceName     string
-	methodName      string
-	httpMethod      string
-	fullPath        string
-	pathParams      []string
-	pathParamFields []pathParamField
-	queryParams     []annotations.QueryParam
-	hasBody         bool
+	serviceName       string
+	methodName        string
+	httpMethod        string
+	fullPath          string
+	pathParams        []string
+	pathParamFields   []pathParamField
+	queryParams       []annotations.QueryParam
+	hasBody           bool
+	bodyFieldJSONName string // non-empty when body: "<field>" selects a sub-message body
+	bodyFieldTSType   string // TS type of the selected body field's message
 }
 
 func (g *Generator) buildRPCRouteConfig(service *protogen.Service, method *protogen.Method) (*rpcRouteConfig, error) {
@@ -328,7 +330,12 @@ func (g *Generator) buildRPCRouteConfig(service *protogen.Service, method *proto
 		return nil, fmt.Errorf("service %s, method %s: %w", serviceName, methodName, err)
 	}
 
-	return &rpcRouteConfig{
+	bodyField, err := annotations.GetBodyField(method)
+	if err != nil {
+		return nil, fmt.Errorf("service %s, method %s: %w", serviceName, methodName, err)
+	}
+
+	cfg := &rpcRouteConfig{
 		serviceName:     serviceName,
 		methodName:      methodName,
 		httpMethod:      httpMethod,
@@ -337,7 +344,12 @@ func (g *Generator) buildRPCRouteConfig(service *protogen.Service, method *proto
 		pathParamFields: pathParamFields,
 		queryParams:     annotations.GetQueryParams(method.Input),
 		hasBody:         httpMethod == "POST" || httpMethod == "PUT" || httpMethod == "PATCH",
-	}, nil
+	}
+	if bodyField != nil {
+		cfg.bodyFieldJSONName = bodyField.Desc.JSONName()
+		cfg.bodyFieldTSType = string(bodyField.Message.Desc.Name())
+	}
+	return cfg, nil
 }
 
 // resolvePathParamFields validates that every path parameter has a matching field
@@ -462,9 +474,11 @@ func (g *Generator) generateRouteEntry(p tscommon.Printer, service *protogen.Ser
 
 	// Parse request body or query params
 	if cfg.hasBody {
-		g.generateBodyParsing(p, method, tsMethodName)
+		g.generateBodyParsing(p, cfg, method, tsMethodName)
 		// For body methods, path params must be merged after JSON parse
 		g.generatePathParamMerge(p, cfg, method)
+		// With body field selection, non-body fields bind from query params
+		g.generateQueryParamMerge(p, cfg)
 	} else {
 		// For non-body methods, path params are included in the body literal
 		g.generateQueryParamParsing(p, cfg, method, tsMethodName)
@@ -539,8 +553,9 @@ func (g *Generator) generateSSERouteEntry(
 
 	// Parse request body or query params
 	if cfg.hasBody {
-		g.generateBodyParsing(p, method, tsMethodName)
+		g.generateBodyParsing(p, cfg, method, tsMethodName)
 		g.generatePathParamMerge(p, cfg, method)
+		g.generateQueryParamMerge(p, cfg)
 	} else {
 		g.generateQueryParamParsing(p, cfg, method, tsMethodName)
 	}
@@ -709,9 +724,15 @@ func (g *Generator) generatePathParamExtraction(p tscommon.Printer, cfg *rpcRout
 }
 
 // generateBodyParsing generates code to parse JSON request body.
-func (g *Generator) generateBodyParsing(p tscommon.Printer, method *protogen.Method, tsMethodName string) {
+func (g *Generator) generateBodyParsing(p tscommon.Printer, cfg *rpcRouteConfig, method *protogen.Method, tsMethodName string) {
 	inputType := string(method.Input.Desc.Name())
-	p("          const body = await req.json() as %s;", inputType)
+	if cfg.bodyFieldJSONName != "" {
+		// Body field selection: the JSON body is only the selected sub-message.
+		p("          const body = { %s: await req.json() as %s } as %s;",
+			cfg.bodyFieldJSONName, cfg.bodyFieldTSType, inputType)
+	} else {
+		p("          const body = await req.json() as %s;", inputType)
+	}
 
 	// Optional validation hook
 	p("          if (options?.validateRequest) {")
@@ -775,55 +796,70 @@ func (g *Generator) generateQueryParamParsing(
 
 // generateQueryParamField generates a single query parameter field extraction.
 func (g *Generator) generateQueryParamField(p tscommon.Printer, qp annotations.QueryParam) {
-	jsonName := qp.FieldJSONName
+	p("            %s: %s,", qp.FieldJSONName, queryParamValueExpr(qp))
+}
+
+// generateQueryParamMerge assigns query-bound fields onto an already-parsed body.
+// Used with body field selection, where non-body fields bind from query params
+// even on POST/PUT/PATCH.
+func (g *Generator) generateQueryParamMerge(p tscommon.Printer, cfg *rpcRouteConfig) {
+	if cfg.bodyFieldJSONName == "" || len(cfg.queryParams) == 0 {
+		return
+	}
+	if len(cfg.pathParams) > 0 {
+		// url already declared in path param extraction
+		p("          const params = url.searchParams;")
+	} else {
+		p("          const url = new URL(req.url, \"http://localhost\");")
+		p("          const params = url.searchParams;")
+	}
+	for _, qp := range cfg.queryParams {
+		p("          body.%s = %s;", qp.FieldJSONName, queryParamValueExpr(qp))
+	}
+	p("")
+}
+
+// queryParamValueExpr returns the TS expression that extracts a query parameter
+// value with the correct type from a `params: URLSearchParams` variable.
+func queryParamValueExpr(qp annotations.QueryParam) string {
 	paramName := qp.ParamName
 
 	// Handle repeated fields: use getAll() for multi-value params
 	if qp.Field != nil && qp.Field.Desc.IsList() {
 		if qp.Field.Desc.Kind() == protoreflect.EnumKind && qp.Field.Enum != nil {
-			p(`            %s: params.getAll("%s") as %s[],`, jsonName, paramName, string(qp.Field.Enum.Desc.Name()))
-		} else {
-			p(`            %s: params.getAll("%s"),`, jsonName, paramName)
+			return fmt.Sprintf(`params.getAll("%s") as %s[]`, paramName, string(qp.Field.Enum.Desc.Name()))
 		}
-		return
+		return fmt.Sprintf(`params.getAll("%s")`, paramName)
 	}
 
 	if qp.Field != nil {
 		// Check if it's an enum field — cast to enum type with UNSPECIFIED default
 		if qp.Field.Desc.Kind() == protoreflect.EnumKind && qp.Field.Enum != nil {
 			unspecified := tscommon.TSEnumUnspecifiedValue(qp.Field)
-			p(
-				`            %s: (params.get("%s") ?? %s) as %s,`,
-				jsonName,
-				paramName,
-				unspecified,
-				string(qp.Field.Enum.Desc.Name()),
-			)
-			return
+			return fmt.Sprintf(`(params.get("%s") ?? %s) as %s`,
+				paramName, unspecified, string(qp.Field.Enum.Desc.Name()))
 		}
 
 		tsType := tscommon.TSScalarTypeForField(qp.Field)
 		switch tsType {
 		case tscommon.TSNumber:
-			p(`            %s: Number(params.get("%s") ?? "0"),`, jsonName, paramName)
+			return fmt.Sprintf(`Number(params.get("%s") ?? "0")`, paramName)
 		case tscommon.TSBoolean:
-			p(`            %s: params.get("%s") === "true",`, jsonName, paramName)
+			return fmt.Sprintf(`params.get("%s") === "true"`, paramName)
 		default:
-			p(`            %s: params.get("%s") ?? "",`, jsonName, paramName)
+			return fmt.Sprintf(`params.get("%s") ?? ""`, paramName)
 		}
-	} else {
-		// Fallback based on field kind string
-		switch qp.FieldKind {
-		case "int32", "sint32", "sfixed32", "uint32", "fixed32", "float", "double":
-			p(`            %s: Number(params.get("%s") ?? "0"),`, jsonName, paramName)
-		case "int64", "sint64", "sfixed64", "uint64", "fixed64":
-			p(`            %s: params.get("%s") ?? "0",`, jsonName, paramName)
-		case "bool":
-			p(`            %s: params.get("%s") === "true",`, jsonName, paramName)
-		case "enum":
-			p(`            %s: params.get("%s") ?? "",`, jsonName, paramName)
-		default:
-			p(`            %s: params.get("%s") ?? "",`, jsonName, paramName)
-		}
+	}
+
+	// Fallback based on field kind string
+	switch qp.FieldKind {
+	case "int32", "sint32", "sfixed32", "uint32", "fixed32", "float", "double":
+		return fmt.Sprintf(`Number(params.get("%s") ?? "0")`, paramName)
+	case "int64", "sint64", "sfixed64", "uint64", "fixed64":
+		return fmt.Sprintf(`params.get("%s") ?? "0"`, paramName)
+	case "bool":
+		return fmt.Sprintf(`params.get("%s") === "true"`, paramName)
+	default:
+		return fmt.Sprintf(`params.get("%s") ?? ""`, paramName)
 	}
 }

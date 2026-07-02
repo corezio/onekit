@@ -6,6 +6,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -408,6 +409,11 @@ class OptionDataServiceClientOptions:
     default_headers: Optional[Mapping[str, str]] = None
     timeout: Optional[float] = None
     content_type: str = "application/json"
+    # Total attempts including the first (1 = no retries). Transport errors and
+    # HTTP 429/502/503/504 are retried with exponential backoff. SSE never retries.
+    max_retry_attempts: int = 1
+    # Delay in seconds before the first retry; doubles on each subsequent retry.
+    retry_backoff: float = 0.25
 
 
 @dataclass
@@ -431,6 +437,8 @@ class OptionDataServiceClient:
         self._default_headers: dict[str, str] = dict(opts.default_headers or {})
         self._timeout = opts.timeout
         self._content_type = opts.content_type
+        self._max_retry_attempts = opts.max_retry_attempts
+        self._retry_backoff = opts.retry_backoff
 
     def get_option_bars(
         self,
@@ -449,7 +457,7 @@ class OptionDataServiceClient:
         if opts.headers:
             headers.update(opts.headers)
         body = json.dumps(req.to_dict()).encode("utf-8")
-        resp = self._transport.request(
+        resp = self._request_with_retries(
             method="POST",
             url=self._base_url + path,
             headers=headers,
@@ -461,6 +469,33 @@ class OptionDataServiceClient:
         if not resp.body:
             return GetOptionBarsResponse()
         return GetOptionBarsResponse.from_dict(json.loads(resp.body))
+
+    def _request_with_retries(
+        self,
+        method: str,
+        url: str,
+        headers: Mapping[str, str],
+        body: Optional[bytes],
+        timeout: Optional[float],
+    ) -> HttpResponse:
+        """Executes a request, retrying transport errors and 429/502/503/504."""
+        attempts = max(1, self._max_retry_attempts)
+        last_exc: Optional[Exception] = None
+        for attempt in range(attempts):
+            if attempt > 0:
+                time.sleep(self._retry_backoff * (2 ** (attempt - 1)))
+            try:
+                resp = self._transport.request(
+                    method=method, url=url, headers=headers, body=body, timeout=timeout,
+                )
+            except Exception as exc:  # noqa: BLE001 - transport errors vary by implementation
+                last_exc = exc
+                continue
+            if attempt < attempts - 1 and resp.status in (429, 502, 503, 504):
+                continue
+            return resp
+        assert last_exc is not None
+        raise last_exc
 
     def _raise_for_status(self, resp: HttpResponse) -> None:
         """Map a non-2xx response to the most specific exception available."""
@@ -492,6 +527,11 @@ class UnwrapServiceClientOptions:
     default_headers: Optional[Mapping[str, str]] = None
     timeout: Optional[float] = None
     content_type: str = "application/json"
+    # Total attempts including the first (1 = no retries). Transport errors and
+    # HTTP 429/502/503/504 are retried with exponential backoff. SSE never retries.
+    max_retry_attempts: int = 1
+    # Delay in seconds before the first retry; doubles on each subsequent retry.
+    retry_backoff: float = 0.25
 
 
 @dataclass
@@ -515,6 +555,8 @@ class UnwrapServiceClient:
         self._default_headers: dict[str, str] = dict(opts.default_headers or {})
         self._timeout = opts.timeout
         self._content_type = opts.content_type
+        self._max_retry_attempts = opts.max_retry_attempts
+        self._retry_backoff = opts.retry_backoff
 
     def get_option_bars(
         self,
@@ -533,7 +575,7 @@ class UnwrapServiceClient:
         if opts.headers:
             headers.update(opts.headers)
         body = json.dumps(req.to_dict()).encode("utf-8")
-        resp = self._transport.request(
+        resp = self._request_with_retries(
             method="POST",
             url=self._base_url + path,
             headers=headers,
@@ -563,7 +605,7 @@ class UnwrapServiceClient:
         if opts.headers:
             headers.update(opts.headers)
         body = json.dumps(req.to_dict()).encode("utf-8")
-        resp = self._transport.request(
+        resp = self._request_with_retries(
             method="POST",
             url=self._base_url + path,
             headers=headers,
@@ -593,7 +635,7 @@ class UnwrapServiceClient:
         if opts.headers:
             headers.update(opts.headers)
         body = json.dumps(req.to_dict()).encode("utf-8")
-        resp = self._transport.request(
+        resp = self._request_with_retries(
             method="POST",
             url=self._base_url + path,
             headers=headers,
@@ -623,7 +665,7 @@ class UnwrapServiceClient:
         if opts.headers:
             headers.update(opts.headers)
         body = json.dumps(req.to_dict()).encode("utf-8")
-        resp = self._transport.request(
+        resp = self._request_with_retries(
             method="POST",
             url=self._base_url + path,
             headers=headers,
@@ -635,6 +677,33 @@ class UnwrapServiceClient:
         if not resp.body:
             return RootMapWithValueUnwrapResponse()
         return RootMapWithValueUnwrapResponse.from_dict(json.loads(resp.body))
+
+    def _request_with_retries(
+        self,
+        method: str,
+        url: str,
+        headers: Mapping[str, str],
+        body: Optional[bytes],
+        timeout: Optional[float],
+    ) -> HttpResponse:
+        """Executes a request, retrying transport errors and 429/502/503/504."""
+        attempts = max(1, self._max_retry_attempts)
+        last_exc: Optional[Exception] = None
+        for attempt in range(attempts):
+            if attempt > 0:
+                time.sleep(self._retry_backoff * (2 ** (attempt - 1)))
+            try:
+                resp = self._transport.request(
+                    method=method, url=url, headers=headers, body=body, timeout=timeout,
+                )
+            except Exception as exc:  # noqa: BLE001 - transport errors vary by implementation
+                last_exc = exc
+                continue
+            if attempt < attempts - 1 and resp.status in (429, 502, 503, 504):
+                continue
+            return resp
+        assert last_exc is not None
+        raise last_exc
 
     def _raise_for_status(self, resp: HttpResponse) -> None:
         """Map a non-2xx response to the most specific exception available."""

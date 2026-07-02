@@ -6,6 +6,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -13,6 +14,49 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import IntEnum
 from typing import Any, AsyncIterator, Iterator, Mapping, Optional, Protocol, Sequence, Union
+
+class SseConnection(Protocol):
+    """An open Server-Sent Events connection returned by a transport's stream()."""
+    status: int
+    headers: Mapping[str, str]
+    def iter_lines(self) -> Iterator[bytes]: ...
+    def read_body(self) -> bytes: ...
+    def close(self) -> None: ...
+
+
+class UrllibSseConnection:
+    """SseConnection over an open urllib response."""
+    def __init__(self, status: int, headers: Mapping[str, str], raw: Any) -> None:
+        self.status = status
+        self.headers = headers
+        self._raw = raw
+
+    def iter_lines(self) -> Iterator[bytes]:
+        for line in self._raw:
+            yield line
+
+    def read_body(self) -> bytes:
+        return self._raw.read()
+
+    def close(self) -> None:
+        self._raw.close()
+
+
+def _iter_sse_data(lines: Iterator[bytes]) -> Iterator[str]:
+    """Yields each SSE event's data payload; joins multi-line data fields per spec."""
+    data_parts: list[str] = []
+    for raw in lines:
+        line = raw.decode("utf-8").rstrip("\n").rstrip("\r")
+        if line == "":
+            if data_parts:
+                yield "\n".join(data_parts)
+                data_parts = []
+            continue
+        if line.startswith("data:"):
+            data_parts.append(line[5:].lstrip(" "))
+    if data_parts:
+        yield "\n".join(data_parts)
+
 
 @dataclass
 class HttpResponse:
@@ -60,6 +104,32 @@ class UrllibTransport:
                 headers={k: v for k, v in exc.headers.items()} if exc.headers else {},
                 body=exc.read() if hasattr(exc, "read") else b"",
             )
+
+    def stream(
+        self,
+        method: str,
+        url: str,
+        headers: Mapping[str, str],
+        body: Optional[bytes],
+        timeout: Optional[float],
+    ) -> UrllibSseConnection:
+        """Opens a streaming HTTP connection for Server-Sent Events."""
+        req = urllib.request.Request(url=url, method=method, data=body)
+        for key, value in headers.items():
+            req.add_header(key, value)
+        try:
+            resp = urllib.request.urlopen(req, timeout=timeout)
+        except urllib.error.HTTPError as exc:
+            return UrllibSseConnection(
+                status=exc.code,
+                headers={k: v for k, v in exc.headers.items()} if exc.headers else {},
+                raw=exc,
+            )
+        return UrllibSseConnection(
+            status=resp.status,
+            headers={k: v for k, v in resp.headers.items()},
+            raw=resp,
+        )
 
 
 @dataclass
@@ -274,6 +344,11 @@ class SSEServiceClientOptions:
     default_headers: Optional[Mapping[str, str]] = None
     timeout: Optional[float] = None
     content_type: str = "application/json"
+    # Total attempts including the first (1 = no retries). Transport errors and
+    # HTTP 429/502/503/504 are retried with exponential backoff. SSE never retries.
+    max_retry_attempts: int = 1
+    # Delay in seconds before the first retry; doubles on each subsequent retry.
+    retry_backoff: float = 0.25
 
 
 @dataclass
@@ -297,6 +372,8 @@ class SSEServiceClient:
         self._default_headers: dict[str, str] = dict(opts.default_headers or {})
         self._timeout = opts.timeout
         self._content_type = opts.content_type
+        self._max_retry_attempts = opts.max_retry_attempts
+        self._retry_backoff = opts.retry_backoff
 
     def get_status(
         self,
@@ -315,7 +392,7 @@ class SSEServiceClient:
         if opts.headers:
             headers.update(opts.headers)
         body: Optional[bytes] = None
-        resp = self._transport.request(
+        resp = self._request_with_retries(
             method="GET",
             url=self._base_url + path,
             headers=headers,
@@ -333,31 +410,156 @@ class SSEServiceClient:
         req: StreamEventsRequest,
         options: Optional[SSEServiceCallOptions] = None,
     ) -> Iterator[Event]:
-        """SSE streaming is not yet supported by protoc-gen-onekit-py-client."""
-        raise NotImplementedError(
-            "SSE streaming is not yet supported in py-client. "
-            "Track support at https://github.com/1homsi/onekit/issues (label: py-client)."
+        """Calls test.sse.SSEService.StreamEvents (Server-Sent Events stream)."""
+        opts = options or SSEServiceCallOptions()
+        path = "/api/v1/events"
+        headers: dict[str, str] = dict(self._default_headers)
+        headers["Accept"] = "text/event-stream"
+        if opts.headers:
+            headers.update(opts.headers)
+        body: Optional[bytes] = None
+        stream = getattr(self._transport, "stream", None)
+        if stream is None:
+            raise TypeError(
+                "transport does not support SSE streaming; "
+                "provide a stream() method (see UrllibTransport.stream)"
+            )
+        conn: SseConnection = stream(
+            method="GET",
+            url=self._base_url + path,
+            headers=headers,
+            body=body,
+            timeout=opts.timeout if opts.timeout is not None else self._timeout,
         )
+        if conn.status >= 400:
+            error_body = conn.read_body()
+            conn.close()
+            self._raise_for_status(HttpResponse(
+                status=conn.status,
+                headers=conn.headers,
+                body=error_body,
+            ))
+        try:
+            for data in _iter_sse_data(conn.iter_lines()):
+                yield Event.from_dict(json.loads(data))
+        finally:
+            conn.close()
+
     def stream_resource_events(
         self,
         req: StreamResourceEventsRequest,
         options: Optional[SSEServiceCallOptions] = None,
     ) -> Iterator[ResourceEvent]:
-        """SSE streaming is not yet supported by protoc-gen-onekit-py-client."""
-        raise NotImplementedError(
-            "SSE streaming is not yet supported in py-client. "
-            "Track support at https://github.com/1homsi/onekit/issues (label: py-client)."
+        """Calls test.sse.SSEService.StreamResourceEvents (Server-Sent Events stream)."""
+        opts = options or SSEServiceCallOptions()
+        path = "/api/v1/resources/{resource_id}/events"
+        path = path.replace("{resource_id}", urllib.parse.quote(str(req.resource_id), safe=""))
+        headers: dict[str, str] = dict(self._default_headers)
+        headers["Accept"] = "text/event-stream"
+        if opts.headers:
+            headers.update(opts.headers)
+        body: Optional[bytes] = None
+        stream = getattr(self._transport, "stream", None)
+        if stream is None:
+            raise TypeError(
+                "transport does not support SSE streaming; "
+                "provide a stream() method (see UrllibTransport.stream)"
+            )
+        conn: SseConnection = stream(
+            method="GET",
+            url=self._base_url + path,
+            headers=headers,
+            body=body,
+            timeout=opts.timeout if opts.timeout is not None else self._timeout,
         )
+        if conn.status >= 400:
+            error_body = conn.read_body()
+            conn.close()
+            self._raise_for_status(HttpResponse(
+                status=conn.status,
+                headers=conn.headers,
+                body=error_body,
+            ))
+        try:
+            for data in _iter_sse_data(conn.iter_lines()):
+                yield ResourceEvent.from_dict(json.loads(data))
+        finally:
+            conn.close()
+
     def stream_filtered_events(
         self,
         req: StreamFilteredEventsRequest,
         options: Optional[SSEServiceCallOptions] = None,
     ) -> Iterator[Event]:
-        """SSE streaming is not yet supported by protoc-gen-onekit-py-client."""
-        raise NotImplementedError(
-            "SSE streaming is not yet supported in py-client. "
-            "Track support at https://github.com/1homsi/onekit/issues (label: py-client)."
+        """Calls test.sse.SSEService.StreamFilteredEvents (Server-Sent Events stream)."""
+        opts = options or SSEServiceCallOptions()
+        path = "/api/v1/events/filtered"
+        query_pairs: list[tuple[str, str]] = []
+        if req.event_type:
+            query_pairs.append(("type", str(req.event_type)))
+        if req.limit is not None and req.limit != 0:
+            query_pairs.append(("limit", str(req.limit)))
+        if query_pairs:
+            path = path + "?" + urllib.parse.urlencode(query_pairs, doseq=True)
+        headers: dict[str, str] = dict(self._default_headers)
+        headers["Accept"] = "text/event-stream"
+        if opts.headers:
+            headers.update(opts.headers)
+        body: Optional[bytes] = None
+        stream = getattr(self._transport, "stream", None)
+        if stream is None:
+            raise TypeError(
+                "transport does not support SSE streaming; "
+                "provide a stream() method (see UrllibTransport.stream)"
+            )
+        conn: SseConnection = stream(
+            method="GET",
+            url=self._base_url + path,
+            headers=headers,
+            body=body,
+            timeout=opts.timeout if opts.timeout is not None else self._timeout,
         )
+        if conn.status >= 400:
+            error_body = conn.read_body()
+            conn.close()
+            self._raise_for_status(HttpResponse(
+                status=conn.status,
+                headers=conn.headers,
+                body=error_body,
+            ))
+        try:
+            for data in _iter_sse_data(conn.iter_lines()):
+                yield Event.from_dict(json.loads(data))
+        finally:
+            conn.close()
+
+    def _request_with_retries(
+        self,
+        method: str,
+        url: str,
+        headers: Mapping[str, str],
+        body: Optional[bytes],
+        timeout: Optional[float],
+    ) -> HttpResponse:
+        """Executes a request, retrying transport errors and 429/502/503/504."""
+        attempts = max(1, self._max_retry_attempts)
+        last_exc: Optional[Exception] = None
+        for attempt in range(attempts):
+            if attempt > 0:
+                time.sleep(self._retry_backoff * (2 ** (attempt - 1)))
+            try:
+                resp = self._transport.request(
+                    method=method, url=url, headers=headers, body=body, timeout=timeout,
+                )
+            except Exception as exc:  # noqa: BLE001 - transport errors vary by implementation
+                last_exc = exc
+                continue
+            if attempt < attempts - 1 and resp.status in (429, 502, 503, 504):
+                continue
+            return resp
+        assert last_exc is not None
+        raise last_exc
+
     def _raise_for_status(self, resp: HttpResponse) -> None:
         """Map a non-2xx response to the most specific exception available."""
         body = resp.body or b""

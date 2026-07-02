@@ -382,7 +382,12 @@ type HttpConfig struct {
 	// When true, this method uses Server-Sent Events (SSE) for streaming responses.
 	// The server sends events with Content-Type: text/event-stream.
 	// Each event is the response message serialized as JSON in the SSE data field.
-	Stream        bool `protobuf:"varint,3,opt,name=stream,proto3" json:"stream,omitempty"`
+	Stream bool `protobuf:"varint,3,opt,name=stream,proto3" json:"stream,omitempty"`
+	// Selects which part of the request message is the HTTP request body.
+	// "" or "*" (default): the entire request message is the body.
+	// "<field_name>": only that field (which must be a singular message field)
+	// is the body; the remaining fields bind from path and query parameters.
+	Body          string `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -436,6 +441,13 @@ func (x *HttpConfig) GetStream() bool {
 		return x.Stream
 	}
 	return false
+}
+
+func (x *HttpConfig) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
 }
 
 // ServiceConfig defines HTTP-specific configuration for an entire service
@@ -886,12 +898,13 @@ var File_proto_onekit_http_annotations_proto protoreflect.FileDescriptor
 
 const file_proto_onekit_http_annotations_proto_rawDesc = "" +
 	"\n" +
-	"#proto/onekit/http/annotations.proto\x12\vonekit.http\x1a google/protobuf/descriptor.proto\"i\n" +
+	"#proto/onekit/http/annotations.proto\x12\vonekit.http\x1a google/protobuf/descriptor.proto\"}\n" +
 	"\n" +
 	"HttpConfig\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12/\n" +
 	"\x06method\x18\x02 \x01(\x0e2\x17.onekit.http.HttpMethodR\x06method\x12\x16\n" +
-	"\x06stream\x18\x03 \x01(\bR\x06stream\",\n" +
+	"\x06stream\x18\x03 \x01(\bR\x06stream\x12\x12\n" +
+	"\x04body\x18\x04 \x01(\tR\x04body\",\n" +
 	"\rServiceConfig\x12\x1b\n" +
 	"\tbase_path\x18\x01 \x01(\tR\bbasePath\"'\n" +
 	"\rFieldExamples\x12\x16\n" +

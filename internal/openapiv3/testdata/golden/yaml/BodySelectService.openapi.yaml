@@ -1,0 +1,194 @@
+openapi: 3.1.0
+info:
+    title: BodySelectService API
+    version: 1.0.0
+paths:
+    /api/v1/users/{user_id}/profile:
+        put:
+            tags:
+                - BodySelectService
+            summary: UpdateProfile
+            description: PUT with a selected body field plus a path param and a query param
+            operationId: UpdateProfile
+            parameters:
+                - name: user_id
+                  in: path
+                  description: Bound from the URL path
+                  required: true
+                  schema:
+                    type: string
+                - name: notify
+                  in: query
+                  description: Bound from the query string, even though this is a PUT
+                  required: false
+                  schema:
+                    type: boolean
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/Profile'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Profile'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/v1/notes:
+        post:
+            tags:
+                - BodySelectService
+            summary: CreateNote
+            description: POST with a selected body field and a query param, no path params
+            operationId: CreateNote
+            parameters:
+                - name: collection
+                  in: query
+                  description: Bound from the query string, even though this is a POST
+                  required: false
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/Note'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Note'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/v1/profiles:
+        post:
+            tags:
+                - BodySelectService
+            summary: CreateProfile
+            description: 'Baseline: whole-message body (body unset)'
+            operationId: CreateProfile
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateProfileRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Profile'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        UpdateProfileRequest:
+            type: object
+            properties:
+                userId:
+                    type: string
+                    description: Bound from the URL path
+                notify:
+                    type: boolean
+                    description: Bound from the query string, even though this is a PUT
+                profile:
+                    $ref: '#/components/schemas/Profile'
+        Profile:
+            type: object
+            properties:
+                displayName:
+                    type: string
+                bio:
+                    type: string
+        CreateNoteRequest:
+            type: object
+            properties:
+                collection:
+                    type: string
+                    description: Bound from the query string, even though this is a POST
+                note:
+                    $ref: '#/components/schemas/Note'
+        Note:
+            type: object
+            properties:
+                id:
+                    type: string
+                title:
+                    type: string
+                content:
+                    type: string
+        CreateProfileRequest:
+            type: object
+            properties:
+                profile:
+                    $ref: '#/components/schemas/Profile'

@@ -6,6 +6,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -633,6 +634,11 @@ class FeatureServiceClientOptions:
     default_headers: Optional[Mapping[str, str]] = None
     timeout: Optional[float] = None
     content_type: str = "application/json"
+    # Total attempts including the first (1 = no retries). Transport errors and
+    # HTTP 429/502/503/504 are retried with exponential backoff. SSE never retries.
+    max_retry_attempts: int = 1
+    # Delay in seconds before the first retry; doubles on each subsequent retry.
+    retry_backoff: float = 0.25
     api_key: Optional[str] = None
     tenant_id: Optional[str] = None
 
@@ -662,6 +668,8 @@ class FeatureServiceClient:
         self._default_headers: dict[str, str] = dict(opts.default_headers or {})
         self._timeout = opts.timeout
         self._content_type = opts.content_type
+        self._max_retry_attempts = opts.max_retry_attempts
+        self._retry_backoff = opts.retry_backoff
         if opts.api_key is not None:
             self._default_headers["X-API-Key"] = opts.api_key
         if opts.tenant_id is not None:
@@ -697,7 +705,7 @@ class FeatureServiceClient:
         if opts.tenant_id is not None:
             headers["X-Tenant-ID"] = opts.tenant_id
         body: Optional[bytes] = None
-        resp = self._transport.request(
+        resp = self._request_with_retries(
             method="GET",
             url=self._base_url + path,
             headers=headers,
@@ -732,7 +740,7 @@ class FeatureServiceClient:
         if opts.tenant_id is not None:
             headers["X-Tenant-ID"] = opts.tenant_id
         body: Optional[bytes] = None
-        resp = self._transport.request(
+        resp = self._request_with_retries(
             method="GET",
             url=self._base_url + path,
             headers=headers,
@@ -768,7 +776,7 @@ class FeatureServiceClient:
         if opts.request_id is not None:
             headers["X-Request-ID"] = opts.request_id
         body = json.dumps(req.to_dict()).encode("utf-8")
-        resp = self._transport.request(
+        resp = self._request_with_retries(
             method="POST",
             url=self._base_url + path,
             headers=headers,
@@ -805,7 +813,7 @@ class FeatureServiceClient:
         if opts.idempotency_key is not None:
             headers["X-Idempotency-Key"] = opts.idempotency_key
         body = json.dumps(req.to_dict()).encode("utf-8")
-        resp = self._transport.request(
+        resp = self._request_with_retries(
             method="PUT",
             url=self._base_url + path,
             headers=headers,
@@ -839,7 +847,7 @@ class FeatureServiceClient:
         if opts.tenant_id is not None:
             headers["X-Tenant-ID"] = opts.tenant_id
         body = json.dumps(req.to_dict()).encode("utf-8")
-        resp = self._transport.request(
+        resp = self._request_with_retries(
             method="POST",
             url=self._base_url + path,
             headers=headers,
@@ -873,7 +881,7 @@ class FeatureServiceClient:
         if opts.tenant_id is not None:
             headers["X-Tenant-ID"] = opts.tenant_id
         body = json.dumps(req.to_dict()).encode("utf-8")
-        resp = self._transport.request(
+        resp = self._request_with_retries(
             method="POST",
             url=self._base_url + path,
             headers=headers,
@@ -907,7 +915,7 @@ class FeatureServiceClient:
         if opts.tenant_id is not None:
             headers["X-Tenant-ID"] = opts.tenant_id
         body = json.dumps(req.to_dict()).encode("utf-8")
-        resp = self._transport.request(
+        resp = self._request_with_retries(
             method="POST",
             url=self._base_url + path,
             headers=headers,
@@ -941,7 +949,7 @@ class FeatureServiceClient:
         if opts.tenant_id is not None:
             headers["X-Tenant-ID"] = opts.tenant_id
         body = json.dumps(req.to_dict()).encode("utf-8")
-        resp = self._transport.request(
+        resp = self._request_with_retries(
             method="POST",
             url=self._base_url + path,
             headers=headers,
@@ -953,6 +961,33 @@ class FeatureServiceClient:
         if not resp.body:
             return CombinedUnwrap()
         return CombinedUnwrap.from_dict(json.loads(resp.body))
+
+    def _request_with_retries(
+        self,
+        method: str,
+        url: str,
+        headers: Mapping[str, str],
+        body: Optional[bytes],
+        timeout: Optional[float],
+    ) -> HttpResponse:
+        """Executes a request, retrying transport errors and 429/502/503/504."""
+        attempts = max(1, self._max_retry_attempts)
+        last_exc: Optional[Exception] = None
+        for attempt in range(attempts):
+            if attempt > 0:
+                time.sleep(self._retry_backoff * (2 ** (attempt - 1)))
+            try:
+                resp = self._transport.request(
+                    method=method, url=url, headers=headers, body=body, timeout=timeout,
+                )
+            except Exception as exc:  # noqa: BLE001 - transport errors vary by implementation
+                last_exc = exc
+                continue
+            if attempt < attempts - 1 and resp.status in (429, 502, 503, 504):
+                continue
+            return resp
+        assert last_exc is not None
+        raise last_exc
 
     def _raise_for_status(self, resp: HttpResponse) -> None:
         """Map a non-2xx response to the most specific exception available."""

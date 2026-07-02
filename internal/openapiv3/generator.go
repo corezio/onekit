@@ -881,14 +881,17 @@ func (g *Generator) processMethod(service *protogen.Service, method *protogen.Me
 		operation.Description = strings.TrimSpace(string(method.Comments.Leading))
 	}
 
-	// Build parameters
+	// Build parameters. Headers marked with an auth_type become securitySchemes
+	// instead of plain header parameters.
 	var parameters []*v3.Parameter
 	allHeaders := annotations.CombineHeaders(
 		annotations.GetServiceHeaders(service),
 		annotations.GetMethodHeaders(method),
 	)
-	if len(allHeaders) > 0 {
-		parameters = convertHeadersToParameters(allHeaders)
+	authHeaders, plainHeaders := splitAuthHeaders(allHeaders)
+	g.applySecuritySchemes(operation, authHeaders)
+	if len(plainHeaders) > 0 {
+		parameters = convertHeadersToParameters(plainHeaders)
 	}
 	parameters = append(parameters, g.buildPathParameters(method, info.pathParams)...)
 	parameters = append(parameters, g.buildQueryParameters(method)...)
@@ -899,7 +902,14 @@ func (g *Generator) processMethod(service *protogen.Service, method *protogen.Me
 
 	// Add request body for POST, PUT, PATCH
 	if info.httpMethod == httpMethodPost || info.httpMethod == httpMethodPut || info.httpMethod == httpMethodPatch {
-		inputSchemaRef := fmt.Sprintf("#/components/schemas/%s", g.getSchemaName(method.Input))
+		// With body field selection (body: "<field>"), the request body is the
+		// selected sub-message rather than the whole input message. An invalid
+		// annotation is reported by the go-http generator, so fall back silently.
+		bodySchema := method.Input
+		if bodyField, err := annotations.GetBodyField(method); err == nil && bodyField != nil {
+			bodySchema = bodyField.Message
+		}
+		inputSchemaRef := fmt.Sprintf("#/components/schemas/%s", g.getSchemaName(bodySchema))
 		operation.RequestBody = &v3.RequestBody{
 			Required: proto.Bool(true),
 			Content:  orderedmap.New[string, *v3.MediaType](),

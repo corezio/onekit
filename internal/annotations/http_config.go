@@ -1,6 +1,8 @@
 package annotations
 
 import (
+	"fmt"
+
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
@@ -14,6 +16,7 @@ type HTTPConfig struct {
 	Method     string   // "GET", "POST", "PUT", "DELETE", "PATCH"
 	PathParams []string // Path variable names extracted from path
 	Stream     bool     // When true, this method uses SSE streaming
+	Body       string   // "" or "*" = whole message; otherwise the request field that is the body
 }
 
 // ServiceConfig represents the HTTP configuration for a service.
@@ -51,7 +54,35 @@ func GetMethodHTTPConfig(method *protogen.Method) *HTTPConfig {
 		Method:     HTTPMethodToString(httpConfig.GetMethod()),
 		PathParams: ExtractPathParams(path),
 		Stream:     httpConfig.GetStream(),
+		Body:       httpConfig.GetBody(),
 	}
+}
+
+// GetBodyField resolves the body annotation of a method to the request field
+// selected as the HTTP body. Returns nil when the whole message is the body
+// ("" or "*"). Returns an error if the named field does not exist or is not a
+// singular message field.
+func GetBodyField(method *protogen.Method) (*protogen.Field, error) {
+	cfg := GetMethodHTTPConfig(method)
+	if cfg == nil || cfg.Body == "" || cfg.Body == "*" {
+		return nil, nil
+	}
+	for _, field := range method.Input.Fields {
+		if string(field.Desc.Name()) != cfg.Body {
+			continue
+		}
+		if field.Message == nil || field.Desc.IsList() || field.Desc.IsMap() {
+			return nil, fmt.Errorf(
+				"method %s: body field %q must be a singular message field",
+				method.Desc.FullName(), cfg.Body,
+			)
+		}
+		return field, nil
+	}
+	return nil, fmt.Errorf(
+		"method %s: body field %q not found on request message %s",
+		method.Desc.FullName(), cfg.Body, method.Input.Desc.FullName(),
+	)
 }
 
 // GetServiceBasePath extracts the base path from service options.

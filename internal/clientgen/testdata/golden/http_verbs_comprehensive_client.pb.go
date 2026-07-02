@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -30,6 +31,16 @@ const (
 // It allows passing protojson.UnmarshalOptions (e.g. DiscardUnknown) through custom unmarshalers.
 type onekitUnmarshaler interface {
 	UnmarshalJSONOnekit(data []byte, opts protojson.UnmarshalOptions) error
+}
+
+// onekitIsRetryableStatus reports whether a status code is safe to retry:
+// 429 Too Many Requests, 502 Bad Gateway, 503 Service Unavailable, 504 Gateway Timeout.
+func onekitIsRetryableStatus(status int) bool {
+	switch status {
+	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	}
+	return false
 }
 
 // RESTfulAPIServiceClient is the client API for RESTfulAPIService service.
@@ -52,6 +63,8 @@ type rESTfulAPIServiceClient struct {
 	contentType          string
 	defaultHeaders       map[string]string
 	discardUnknownFields bool
+	retryMaxAttempts     int
+	retryBackoff         time.Duration
 }
 
 var _ RESTfulAPIServiceClient = (*rESTfulAPIServiceClient)(nil)
@@ -89,6 +102,17 @@ func WithRESTfulAPIServiceDefaultHeader(key, value string) RESTfulAPIServiceClie
 func WithRESTfulAPIServiceDiscardUnknownFields(discard bool) RESTfulAPIServiceClientOption {
 	return func(c *rESTfulAPIServiceClient) {
 		c.discardUnknownFields = discard
+	}
+}
+
+// WithRESTfulAPIServiceRetry enables automatic retries for transient failures.
+// maxAttempts is the total number of attempts including the first (values < 1 disable retries).
+// baseBackoff is the delay before the first retry; it doubles on each subsequent retry.
+// Retried failures: transport errors and HTTP 429, 502, 503, 504. SSE streams are never retried.
+func WithRESTfulAPIServiceRetry(maxAttempts int, baseBackoff time.Duration) RESTfulAPIServiceClientOption {
+	return func(c *rESTfulAPIServiceClient) {
+		c.retryMaxAttempts = maxAttempts
+		c.retryBackoff = baseBackoff
 	}
 }
 
@@ -219,8 +243,8 @@ func (c *rESTfulAPIServiceClient) ListResources(ctx context.Context, req *ListRe
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -284,8 +308,8 @@ func (c *rESTfulAPIServiceClient) GetResource(ctx context.Context, req *GetResou
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -351,8 +375,8 @@ func (c *rESTfulAPIServiceClient) GetNestedResource(ctx context.Context, req *Ge
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -421,8 +445,8 @@ func (c *rESTfulAPIServiceClient) CreateResource(ctx context.Context, req *Creat
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -492,8 +516,8 @@ func (c *rESTfulAPIServiceClient) UpdateResource(ctx context.Context, req *Updat
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -563,8 +587,8 @@ func (c *rESTfulAPIServiceClient) PatchResource(ctx context.Context, req *PatchR
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -628,8 +652,8 @@ func (c *rESTfulAPIServiceClient) DeleteResource(ctx context.Context, req *Delet
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -698,8 +722,8 @@ func (c *rESTfulAPIServiceClient) DefaultPostMethod(ctx context.Context, req *De
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -774,8 +798,8 @@ func (c *rESTfulAPIServiceClient) SearchResources(ctx context.Context, req *Sear
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -820,6 +844,49 @@ func (c *rESTfulAPIServiceClient) marshalRequest(req proto.Message, contentType 
 	default:
 		return protojson.Marshal(req)
 	}
+}
+
+func (c *rESTfulAPIServiceClient) doRequest(httpReq *http.Request) (*http.Response, error) {
+	maxAttempts := c.retryMaxAttempts
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
+	baseBackoff := c.retryBackoff
+	if baseBackoff <= 0 {
+		baseBackoff = 250 * time.Millisecond
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			backoff := baseBackoff << (attempt - 1)
+			select {
+			case <-httpReq.Context().Done():
+				return nil, httpReq.Context().Err()
+			case <-time.After(backoff):
+			}
+			if httpReq.GetBody != nil {
+				newBody, bodyErr := httpReq.GetBody()
+				if bodyErr != nil {
+					return nil, fmt.Errorf("failed to rewind request body for retry: %w", bodyErr)
+				}
+				httpReq.Body = newBody
+			}
+		}
+
+		resp, err := c.httpClient.Do(httpReq)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if attempt < maxAttempts-1 && onekitIsRetryableStatus(resp.StatusCode) {
+			_ = resp.Body.Close()
+			lastErr = fmt.Errorf("request failed with retryable status %d", resp.StatusCode)
+			continue
+		}
+		return resp, nil
+	}
+	return nil, lastErr
 }
 
 func (c *rESTfulAPIServiceClient) handleErrorResponse(statusCode int, body []byte, contentType string) error {
@@ -880,6 +947,8 @@ type backwardCompatServiceClient struct {
 	contentType          string
 	defaultHeaders       map[string]string
 	discardUnknownFields bool
+	retryMaxAttempts     int
+	retryBackoff         time.Duration
 }
 
 var _ BackwardCompatServiceClient = (*backwardCompatServiceClient)(nil)
@@ -917,6 +986,17 @@ func WithBackwardCompatServiceDefaultHeader(key, value string) BackwardCompatSer
 func WithBackwardCompatServiceDiscardUnknownFields(discard bool) BackwardCompatServiceClientOption {
 	return func(c *backwardCompatServiceClient) {
 		c.discardUnknownFields = discard
+	}
+}
+
+// WithBackwardCompatServiceRetry enables automatic retries for transient failures.
+// maxAttempts is the total number of attempts including the first (values < 1 disable retries).
+// baseBackoff is the delay before the first retry; it doubles on each subsequent retry.
+// Retried failures: transport errors and HTTP 429, 502, 503, 504. SSE streams are never retried.
+func WithBackwardCompatServiceRetry(maxAttempts int, baseBackoff time.Duration) BackwardCompatServiceClientOption {
+	return func(c *backwardCompatServiceClient) {
+		c.retryMaxAttempts = maxAttempts
+		c.retryBackoff = baseBackoff
 	}
 }
 
@@ -1008,8 +1088,8 @@ func (c *backwardCompatServiceClient) LegacyAction(ctx context.Context, req *Leg
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -1054,6 +1134,49 @@ func (c *backwardCompatServiceClient) marshalRequest(req proto.Message, contentT
 	default:
 		return protojson.Marshal(req)
 	}
+}
+
+func (c *backwardCompatServiceClient) doRequest(httpReq *http.Request) (*http.Response, error) {
+	maxAttempts := c.retryMaxAttempts
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
+	baseBackoff := c.retryBackoff
+	if baseBackoff <= 0 {
+		baseBackoff = 250 * time.Millisecond
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			backoff := baseBackoff << (attempt - 1)
+			select {
+			case <-httpReq.Context().Done():
+				return nil, httpReq.Context().Err()
+			case <-time.After(backoff):
+			}
+			if httpReq.GetBody != nil {
+				newBody, bodyErr := httpReq.GetBody()
+				if bodyErr != nil {
+					return nil, fmt.Errorf("failed to rewind request body for retry: %w", bodyErr)
+				}
+				httpReq.Body = newBody
+			}
+		}
+
+		resp, err := c.httpClient.Do(httpReq)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if attempt < maxAttempts-1 && onekitIsRetryableStatus(resp.StatusCode) {
+			_ = resp.Body.Close()
+			lastErr = fmt.Errorf("request failed with retryable status %d", resp.StatusCode)
+			continue
+		}
+		return resp, nil
+	}
+	return nil, lastErr
 }
 
 func (c *backwardCompatServiceClient) handleErrorResponse(statusCode int, body []byte, contentType string) error {

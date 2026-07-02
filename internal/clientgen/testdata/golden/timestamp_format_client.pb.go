@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -32,6 +33,16 @@ type onekitUnmarshaler interface {
 	UnmarshalJSONOnekit(data []byte, opts protojson.UnmarshalOptions) error
 }
 
+// onekitIsRetryableStatus reports whether a status code is safe to retry:
+// 429 Too Many Requests, 502 Bad Gateway, 503 Service Unavailable, 504 Gateway Timeout.
+func onekitIsRetryableStatus(status int) bool {
+	switch status {
+	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	}
+	return false
+}
+
 // TimestampFormatServiceClient is the client API for TimestampFormatService service.
 type TimestampFormatServiceClient interface {
 	CreateTimestampFormat(ctx context.Context, req *TimestampFormatTest, opts ...TimestampFormatServiceCallOption) (*TimestampFormatTest, error)
@@ -45,6 +56,8 @@ type timestampFormatServiceClient struct {
 	contentType          string
 	defaultHeaders       map[string]string
 	discardUnknownFields bool
+	retryMaxAttempts     int
+	retryBackoff         time.Duration
 }
 
 var _ TimestampFormatServiceClient = (*timestampFormatServiceClient)(nil)
@@ -82,6 +95,17 @@ func WithTimestampFormatServiceDefaultHeader(key, value string) TimestampFormatS
 func WithTimestampFormatServiceDiscardUnknownFields(discard bool) TimestampFormatServiceClientOption {
 	return func(c *timestampFormatServiceClient) {
 		c.discardUnknownFields = discard
+	}
+}
+
+// WithTimestampFormatServiceRetry enables automatic retries for transient failures.
+// maxAttempts is the total number of attempts including the first (values < 1 disable retries).
+// baseBackoff is the delay before the first retry; it doubles on each subsequent retry.
+// Retried failures: transport errors and HTTP 429, 502, 503, 504. SSE streams are never retried.
+func WithTimestampFormatServiceRetry(maxAttempts int, baseBackoff time.Duration) TimestampFormatServiceClientOption {
+	return func(c *timestampFormatServiceClient) {
+		c.retryMaxAttempts = maxAttempts
+		c.retryBackoff = baseBackoff
 	}
 }
 
@@ -173,8 +197,8 @@ func (c *timestampFormatServiceClient) CreateTimestampFormat(ctx context.Context
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -238,8 +262,8 @@ func (c *timestampFormatServiceClient) GetTimestampFormat(ctx context.Context, r
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -284,6 +308,49 @@ func (c *timestampFormatServiceClient) marshalRequest(req proto.Message, content
 	default:
 		return protojson.Marshal(req)
 	}
+}
+
+func (c *timestampFormatServiceClient) doRequest(httpReq *http.Request) (*http.Response, error) {
+	maxAttempts := c.retryMaxAttempts
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
+	baseBackoff := c.retryBackoff
+	if baseBackoff <= 0 {
+		baseBackoff = 250 * time.Millisecond
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			backoff := baseBackoff << (attempt - 1)
+			select {
+			case <-httpReq.Context().Done():
+				return nil, httpReq.Context().Err()
+			case <-time.After(backoff):
+			}
+			if httpReq.GetBody != nil {
+				newBody, bodyErr := httpReq.GetBody()
+				if bodyErr != nil {
+					return nil, fmt.Errorf("failed to rewind request body for retry: %w", bodyErr)
+				}
+				httpReq.Body = newBody
+			}
+		}
+
+		resp, err := c.httpClient.Do(httpReq)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if attempt < maxAttempts-1 && onekitIsRetryableStatus(resp.StatusCode) {
+			_ = resp.Body.Close()
+			lastErr = fmt.Errorf("request failed with retryable status %d", resp.StatusCode)
+			continue
+		}
+		return resp, nil
+	}
+	return nil, lastErr
 }
 
 func (c *timestampFormatServiceClient) handleErrorResponse(statusCode int, body []byte, contentType string) error {

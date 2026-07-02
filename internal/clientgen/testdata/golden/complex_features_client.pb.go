@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -30,6 +31,16 @@ const (
 // It allows passing protojson.UnmarshalOptions (e.g. DiscardUnknown) through custom unmarshalers.
 type onekitUnmarshaler interface {
 	UnmarshalJSONOnekit(data []byte, opts protojson.UnmarshalOptions) error
+}
+
+// onekitIsRetryableStatus reports whether a status code is safe to retry:
+// 429 Too Many Requests, 502 Bad Gateway, 503 Service Unavailable, 504 Gateway Timeout.
+func onekitIsRetryableStatus(status int) bool {
+	switch status {
+	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	}
+	return false
 }
 
 // FeatureServiceClient is the client API for FeatureService service.
@@ -51,6 +62,8 @@ type featureServiceClient struct {
 	contentType          string
 	defaultHeaders       map[string]string
 	discardUnknownFields bool
+	retryMaxAttempts     int
+	retryBackoff         time.Duration
 }
 
 var _ FeatureServiceClient = (*featureServiceClient)(nil)
@@ -88,6 +101,17 @@ func WithFeatureServiceDefaultHeader(key, value string) FeatureServiceClientOpti
 func WithFeatureServiceDiscardUnknownFields(discard bool) FeatureServiceClientOption {
 	return func(c *featureServiceClient) {
 		c.discardUnknownFields = discard
+	}
+}
+
+// WithFeatureServiceRetry enables automatic retries for transient failures.
+// maxAttempts is the total number of attempts including the first (values < 1 disable retries).
+// baseBackoff is the delay before the first retry; it doubles on each subsequent retry.
+// Retried failures: transport errors and HTTP 429, 502, 503, 504. SSE streams are never retried.
+func WithFeatureServiceRetry(maxAttempts int, baseBackoff time.Duration) FeatureServiceClientOption {
+	return func(c *featureServiceClient) {
+		c.retryMaxAttempts = maxAttempts
+		c.retryBackoff = baseBackoff
 	}
 }
 
@@ -218,8 +242,8 @@ func (c *featureServiceClient) ListNotes(ctx context.Context, req *ListNotesRequ
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -283,8 +307,8 @@ func (c *featureServiceClient) GetNote(ctx context.Context, req *GetNoteRequest,
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -353,8 +377,8 @@ func (c *featureServiceClient) CreateNote(ctx context.Context, req *CreateNoteRe
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -424,8 +448,8 @@ func (c *featureServiceClient) UpdateNote(ctx context.Context, req *UpdateNoteRe
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -494,8 +518,8 @@ func (c *featureServiceClient) GetNoteList(ctx context.Context, req *GetNoteList
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -564,8 +588,8 @@ func (c *featureServiceClient) GetNoteMap(ctx context.Context, req *GetNoteMapRe
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -634,8 +658,8 @@ func (c *featureServiceClient) GetBarsBySymbol(ctx context.Context, req *GetBars
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -704,8 +728,8 @@ func (c *featureServiceClient) GetCombinedUnwrap(ctx context.Context, req *GetCo
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -750,6 +774,49 @@ func (c *featureServiceClient) marshalRequest(req proto.Message, contentType str
 	default:
 		return protojson.Marshal(req)
 	}
+}
+
+func (c *featureServiceClient) doRequest(httpReq *http.Request) (*http.Response, error) {
+	maxAttempts := c.retryMaxAttempts
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
+	baseBackoff := c.retryBackoff
+	if baseBackoff <= 0 {
+		baseBackoff = 250 * time.Millisecond
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			backoff := baseBackoff << (attempt - 1)
+			select {
+			case <-httpReq.Context().Done():
+				return nil, httpReq.Context().Err()
+			case <-time.After(backoff):
+			}
+			if httpReq.GetBody != nil {
+				newBody, bodyErr := httpReq.GetBody()
+				if bodyErr != nil {
+					return nil, fmt.Errorf("failed to rewind request body for retry: %w", bodyErr)
+				}
+				httpReq.Body = newBody
+			}
+		}
+
+		resp, err := c.httpClient.Do(httpReq)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if attempt < maxAttempts-1 && onekitIsRetryableStatus(resp.StatusCode) {
+			_ = resp.Body.Close()
+			lastErr = fmt.Errorf("request failed with retryable status %d", resp.StatusCode)
+			continue
+		}
+		return resp, nil
+	}
+	return nil, lastErr
 }
 
 func (c *featureServiceClient) handleErrorResponse(statusCode int, body []byte, contentType string) error {

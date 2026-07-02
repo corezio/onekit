@@ -75,6 +75,9 @@ func (g *Generator) generateClientFile(file *protogen.File) error {
 	// 4. Error types
 	g.writeErrorTypes(p)
 
+	// 5. Retry options (shared by all services in this file)
+	g.writeRetryOptions(p)
+
 	// 5. Per service: options + client class
 	for _, service := range file.Services {
 		if err := g.generateServiceClient(p, service); err != nil {
@@ -95,6 +98,19 @@ func (g *Generator) writeErrorTypes(p printer) {
 	tscommon.WriteErrorTypes(tscommon.Printer(p))
 }
 
+// writeRetryOptions emits the shared RetryOptions interface once per file.
+func (g *Generator) writeRetryOptions(p printer) {
+	p("export interface RetryOptions {")
+	p("  /** Total number of attempts including the first. Default 1 (no retries). */")
+	p("  maxAttempts?: number;")
+	p("  /** Delay before the first retry in milliseconds; doubles each retry. Default 250. */")
+	p("  baseDelayMs?: number;")
+	p("  /** Status codes that trigger a retry. Default [429, 502, 503, 504]. */")
+	p("  retryableStatuses?: number[];")
+	p("}")
+	p("")
+}
+
 func (g *Generator) generateServiceClient(p printer, service *protogen.Service) error {
 	serviceName := service.GoName
 
@@ -105,7 +121,9 @@ func (g *Generator) generateServiceClient(p printer, service *protogen.Service) 
 	g.generateCallOptionsInterface(p, service)
 
 	// Client class
-	g.generateClientClass(p, service)
+	if err := g.generateClientClass(p, service); err != nil {
+		return err
+	}
 
 	_ = serviceName
 	return nil
@@ -118,6 +136,8 @@ func (g *Generator) generateClientOptionsInterface(p printer, service *protogen.
 	p("export interface %sClientOptions {", serviceName)
 	p("  fetch?: typeof fetch;")
 	p("  defaultHeaders?: Record<string, string>;")
+	p("  /** Retry policy for transient failures. Never applied to SSE streams. */")
+	p("  retry?: RetryOptions;")
 
 	// Add typed properties for service-level headers
 	serviceHeaders := annotations.GetServiceHeaders(service)
@@ -137,6 +157,8 @@ func (g *Generator) generateCallOptionsInterface(p printer, service *protogen.Se
 	p("export interface %sCallOptions {", serviceName)
 	p("  headers?: Record<string, string>;")
 	p("  signal?: AbortSignal;")
+	p("  /** Per-call retry policy; overrides the client-level policy. */")
+	p("  retry?: RetryOptions;")
 
 	// Add typed properties for service-level headers (also available per-call)
 	serviceHeaders := annotations.GetServiceHeaders(service)
@@ -164,7 +186,7 @@ func (g *Generator) generateCallOptionsInterface(p printer, service *protogen.Se
 }
 
 // generateClientClass generates the client class with constructor and methods.
-func (g *Generator) generateClientClass(p printer, service *protogen.Service) {
+func (g *Generator) generateClientClass(p printer, service *protogen.Service) error {
 	serviceName := service.GoName
 
 	p("export class %sClient {", serviceName)
@@ -173,6 +195,7 @@ func (g *Generator) generateClientClass(p printer, service *protogen.Service) {
 	p("  private baseURL: string;")
 	p("  private fetchFn: typeof fetch;")
 	p("  private defaultHeaders: Record<string, string>;")
+	p("  private retry?: RetryOptions;")
 	p("")
 
 	// Constructor
@@ -180,14 +203,20 @@ func (g *Generator) generateClientClass(p printer, service *protogen.Service) {
 
 	// RPC methods
 	for _, method := range service.Methods {
-		g.generateRPCMethod(p, service, method)
+		if err := g.generateRPCMethod(p, service, method); err != nil {
+			return err
+		}
 	}
+
+	// Retry-aware fetch executor
+	g.generateDoFetch(p)
 
 	// Error handler
 	g.generateHandleError(p)
 
 	p("}")
 	p("")
+	return nil
 }
 
 // generateConstructor generates the client constructor.
@@ -198,6 +227,7 @@ func (g *Generator) generateConstructor(p printer, service *protogen.Service) {
 	p(`    this.baseURL = baseURL.replace(/\/+$/, "");`)
 	p("    this.fetchFn = options?.fetch ?? globalThis.fetch;")
 	p("    this.defaultHeaders = { ...options?.defaultHeaders };")
+	p("    this.retry = options?.retry;")
 
 	// Apply service-level headers from options
 	serviceHeaders := annotations.GetServiceHeaders(service)
@@ -215,14 +245,15 @@ func (g *Generator) generateConstructor(p printer, service *protogen.Service) {
 
 // rpcMethodConfig holds the configuration for generating an RPC method.
 type rpcMethodConfig struct {
-	serviceName string
-	methodName  string
-	httpMethod  string
-	fullPath    string
-	pathParams  []string
-	queryParams []annotations.QueryParam
-	hasBody     bool
-	isSSE       bool
+	serviceName       string
+	methodName        string
+	httpMethod        string
+	fullPath          string
+	pathParams        []string
+	queryParams       []annotations.QueryParam
+	hasBody           bool
+	isSSE             bool
+	bodyFieldJSONName string // non-empty when body: "<field>" selects a sub-message body
 }
 
 // Empty protobuf messages can still be meaningful request values, such as
@@ -276,12 +307,20 @@ func (g *Generator) buildRPCMethodConfig(service *protogen.Service, method *prot
 }
 
 // generateRPCMethod generates a single async RPC method.
-func (g *Generator) generateRPCMethod(p printer, service *protogen.Service, method *protogen.Method) {
+func (g *Generator) generateRPCMethod(p printer, service *protogen.Service, method *protogen.Method) error {
 	cfg := g.buildRPCMethodConfig(service, method)
+
+	bodyField, err := annotations.GetBodyField(method)
+	if err != nil {
+		return err
+	}
+	if bodyField != nil {
+		cfg.bodyFieldJSONName = bodyField.Desc.JSONName()
+	}
 
 	if cfg.isSSE {
 		g.generateSSERPCMethod(p, service, method, cfg)
-		return
+		return nil
 	}
 
 	inputType := string(method.Input.Desc.Name())
@@ -307,6 +346,7 @@ func (g *Generator) generateRPCMethod(p printer, service *protogen.Service, meth
 
 	p("  }")
 	p("")
+	return nil
 }
 
 // generateSSERPCMethod generates an async generator method for SSE streaming.
@@ -435,14 +475,16 @@ func (g *Generator) generateURLBuilding(p printer, cfg *rpcMethodConfig) {
 		p(`    path = path.replace("{%s}", encodeURIComponent(String(req.%s)));`, param, jsonName)
 	}
 
-	// Query parameters
+	// Query parameters. With body field selection, non-body fields bind from
+	// path/query even on POST/PUT/PATCH, so query encoding applies there too.
+	useQuery := cfg.httpMethod == "GET" || cfg.httpMethod == "DELETE" || cfg.bodyFieldJSONName != ""
 	//nolint:nestif // Query param generation requires multiple nested conditions
-	if (cfg.httpMethod == "GET" || cfg.httpMethod == "DELETE") && len(cfg.queryParams) > 0 {
+	if useQuery && len(cfg.queryParams) > 0 {
 		p("    const params = new URLSearchParams();")
 		for _, qp := range cfg.queryParams {
 			// Handle repeated fields: use forEach + append for multi-value params
 			if qp.Field != nil && qp.Field.Desc.IsList() {
-				p("    if (req.%s && req.%s.length > 0) req.%s.forEach(v => params.append(\"%s\", v));",
+				p("    if (req.%s && req.%s.length > 0) req.%s.forEach(v => params.append(\"%s\", String(v)));",
 					qp.FieldJSONName, qp.FieldJSONName, qp.FieldJSONName, qp.ParamName)
 				continue
 			}
@@ -499,21 +541,25 @@ func (g *Generator) generateHeaderMerging(p printer, service *protogen.Service, 
 	p("")
 }
 
-// generateFetchCall generates the fetch invocation.
+// generateFetchCall generates the fetch invocation (retry-aware).
 func (g *Generator) generateFetchCall(p printer, cfg *rpcMethodConfig) {
 	if cfg.hasBody {
-		p("    const resp = await this.fetchFn(url, {")
+		bodyExpr := "req"
+		if cfg.bodyFieldJSONName != "" {
+			bodyExpr = fmt.Sprintf("req.%s ?? {}", cfg.bodyFieldJSONName)
+		}
+		p("    const resp = await this.doFetch(url, {")
 		p(`      method: "%s",`, cfg.httpMethod)
 		p("      headers,")
-		p("      body: JSON.stringify(req),")
+		p("      body: JSON.stringify(%s),", bodyExpr)
 		p("      signal: options?.signal,")
-		p("    });")
+		p("    }, options?.retry ?? this.retry);")
 	} else {
-		p("    const resp = await this.fetchFn(url, {")
+		p("    const resp = await this.doFetch(url, {")
 		p(`      method: "%s",`, cfg.httpMethod)
 		p("      headers,")
 		p("      signal: options?.signal,")
-		p("    });")
+		p("    }, options?.retry ?? this.retry);")
 	}
 	p("")
 }
@@ -527,6 +573,35 @@ func (g *Generator) generateResponseHandling(p printer, method *protogen.Method)
 	p("    }")
 	p("")
 	p("    return await resp.json() as %s;", outputType)
+}
+
+// generateDoFetch generates the private retry-aware fetch executor.
+func (g *Generator) generateDoFetch(p printer) {
+	p("  private async doFetch(url: string, init: RequestInit, retry?: RetryOptions): Promise<Response> {")
+	p("    const maxAttempts = Math.max(1, retry?.maxAttempts ?? 1);")
+	p("    const baseDelayMs = retry?.baseDelayMs ?? 250;")
+	p("    const retryableStatuses = retry?.retryableStatuses ?? [429, 502, 503, 504];")
+	p("    let lastError: unknown;")
+	p("    for (let attempt = 0; attempt < maxAttempts; attempt++) {")
+	p("      if (attempt > 0) {")
+	p("        await new Promise((resolve) => setTimeout(resolve, baseDelayMs * 2 ** (attempt - 1)));")
+	p("      }")
+	p("      try {")
+	p("        const resp = await this.fetchFn(url, init);")
+	p("        if (attempt < maxAttempts - 1 && retryableStatuses.includes(resp.status)) {")
+	p("          lastError = new ApiError(resp.status, `Request failed with retryable status ${resp.status}`, \"\");")
+	p("          continue;")
+	p("        }")
+	p("        return resp;")
+	p("      } catch (e) {")
+	p("        // Aborts are intentional; never retry them.")
+	p(`        if (e instanceof Error && e.name === "AbortError") throw e;`)
+	p("        lastError = e;")
+	p("      }")
+	p("    }")
+	p("    throw lastError;")
+	p("  }")
+	p("")
 }
 
 // generateHandleError generates the private error handler method.

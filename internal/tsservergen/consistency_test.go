@@ -144,6 +144,7 @@ func extractTypeSection(content string) string {
 		if strings.HasPrefix(line, "export interface ServerContext") ||
 			strings.HasPrefix(line, "export interface ServerOptions") ||
 			strings.HasPrefix(line, "export interface RouteDescriptor") ||
+			strings.HasPrefix(line, "export interface RetryOptions") ||
 			strings.Contains(line, "ClientOptions") ||
 			strings.Contains(line, "CallOptions") ||
 			strings.Contains(line, "Client {") ||

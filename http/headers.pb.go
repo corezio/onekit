@@ -22,6 +22,68 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// AuthType marks a header as an authentication credential.
+// Headers with an auth type are emitted as OpenAPI securitySchemes
+// (with a matching security requirement on each operation) instead of
+// plain header parameters. Runtime header validation is unaffected.
+type AuthType int32
+
+const (
+	// Not an authentication header (default).
+	AuthType_AUTH_TYPE_NONE AuthType = 0
+	// API key sent in this header (OpenAPI: type apiKey, in header).
+	AuthType_AUTH_TYPE_API_KEY AuthType = 1
+	// Bearer token (OpenAPI: type http, scheme bearer). Header name is
+	// conventionally "Authorization".
+	AuthType_AUTH_TYPE_BEARER AuthType = 2
+	// Basic authentication (OpenAPI: type http, scheme basic). Header name is
+	// conventionally "Authorization".
+	AuthType_AUTH_TYPE_BASIC AuthType = 3
+)
+
+// Enum value maps for AuthType.
+var (
+	AuthType_name = map[int32]string{
+		0: "AUTH_TYPE_NONE",
+		1: "AUTH_TYPE_API_KEY",
+		2: "AUTH_TYPE_BEARER",
+		3: "AUTH_TYPE_BASIC",
+	}
+	AuthType_value = map[string]int32{
+		"AUTH_TYPE_NONE":    0,
+		"AUTH_TYPE_API_KEY": 1,
+		"AUTH_TYPE_BEARER":  2,
+		"AUTH_TYPE_BASIC":   3,
+	}
+)
+
+func (x AuthType) Enum() *AuthType {
+	p := new(AuthType)
+	*p = x
+	return p
+}
+
+func (x AuthType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (AuthType) Descriptor() protoreflect.EnumDescriptor {
+	return file_proto_onekit_http_headers_proto_enumTypes[0].Descriptor()
+}
+
+func (AuthType) Type() protoreflect.EnumType {
+	return &file_proto_onekit_http_headers_proto_enumTypes[0]
+}
+
+func (x AuthType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use AuthType.Descriptor instead.
+func (AuthType) EnumDescriptor() ([]byte, []int) {
+	return file_proto_onekit_http_headers_proto_rawDescGZIP(), []int{0}
+}
+
 // Header definition for OpenAPI specification
 type Header struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -38,9 +100,16 @@ type Header struct {
 	// Example value for the header
 	Example string `protobuf:"bytes,6,opt,name=example,proto3" json:"example,omitempty"`
 	// Whether the header is deprecated
-	Deprecated    bool `protobuf:"varint,7,opt,name=deprecated,proto3" json:"deprecated,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Deprecated bool `protobuf:"varint,7,opt,name=deprecated,proto3" json:"deprecated,omitempty"`
+	// Authentication semantics for this header. When set to a value other than
+	// AUTH_TYPE_NONE, the OpenAPI generator emits a securityScheme and security
+	// requirement for this header instead of a plain header parameter.
+	AuthType AuthType `protobuf:"varint,8,opt,name=auth_type,json=authType,proto3,enum=onekit.http.AuthType" json:"auth_type,omitempty"`
+	// Optional name for the generated securityScheme component.
+	// Defaults to a name derived from the header (e.g. "X-API-Key" -> "ApiKeyAuth").
+	AuthSchemeName string `protobuf:"bytes,9,opt,name=auth_scheme_name,json=authSchemeName,proto3" json:"auth_scheme_name,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Header) Reset() {
@@ -120,6 +189,20 @@ func (x *Header) GetDeprecated() bool {
 		return x.Deprecated
 	}
 	return false
+}
+
+func (x *Header) GetAuthType() AuthType {
+	if x != nil {
+		return x.AuthType
+	}
+	return AuthType_AUTH_TYPE_NONE
+}
+
+func (x *Header) GetAuthSchemeName() string {
+	if x != nil {
+		return x.AuthSchemeName
+	}
+	return ""
 }
 
 // Service-level headers configuration
@@ -249,7 +332,7 @@ var File_proto_onekit_http_headers_proto protoreflect.FileDescriptor
 
 const file_proto_onekit_http_headers_proto_rawDesc = "" +
 	"\n" +
-	"\x1fproto/onekit/http/headers.proto\x12\vonekit.http\x1a google/protobuf/descriptor.proto\"\xc0\x01\n" +
+	"\x1fproto/onekit/http/headers.proto\x12\vonekit.http\x1a google/protobuf/descriptor.proto\"\x9e\x02\n" +
 	"\x06Header\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x12\n" +
@@ -259,11 +342,18 @@ const file_proto_onekit_http_headers_proto_rawDesc = "" +
 	"\aexample\x18\x06 \x01(\tR\aexample\x12\x1e\n" +
 	"\n" +
 	"deprecated\x18\a \x01(\bR\n" +
-	"deprecated\"P\n" +
+	"deprecated\x122\n" +
+	"\tauth_type\x18\b \x01(\x0e2\x15.onekit.http.AuthTypeR\bauthType\x12(\n" +
+	"\x10auth_scheme_name\x18\t \x01(\tR\x0eauthSchemeName\"P\n" +
 	"\x0eServiceHeaders\x12>\n" +
 	"\x10required_headers\x18\x01 \x03(\v2\x13.onekit.http.HeaderR\x0frequiredHeaders\"O\n" +
 	"\rMethodHeaders\x12>\n" +
-	"\x10required_headers\x18\x01 \x03(\v2\x13.onekit.http.HeaderR\x0frequiredHeaders:g\n" +
+	"\x10required_headers\x18\x01 \x03(\v2\x13.onekit.http.HeaderR\x0frequiredHeaders*`\n" +
+	"\bAuthType\x12\x12\n" +
+	"\x0eAUTH_TYPE_NONE\x10\x00\x12\x15\n" +
+	"\x11AUTH_TYPE_API_KEY\x10\x01\x12\x14\n" +
+	"\x10AUTH_TYPE_BEARER\x10\x02\x12\x13\n" +
+	"\x0fAUTH_TYPE_BASIC\x10\x03:g\n" +
 	"\x0fservice_headers\x12\x1f.google.protobuf.ServiceOptions\x18Ն\x03 \x01(\v2\x1b.onekit.http.ServiceHeadersR\x0eserviceHeaders:c\n" +
 	"\x0emethod_headers\x12\x1e.google.protobuf.MethodOptions\x18ֆ\x03 \x01(\v2\x1a.onekit.http.MethodHeadersR\rmethodHeadersB$Z\"github.com/1homsi/onekit/http;httpb\x06proto3"
 
@@ -279,26 +369,29 @@ func file_proto_onekit_http_headers_proto_rawDescGZIP() []byte {
 	return file_proto_onekit_http_headers_proto_rawDescData
 }
 
+var file_proto_onekit_http_headers_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_proto_onekit_http_headers_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_proto_onekit_http_headers_proto_goTypes = []any{
-	(*Header)(nil),                      // 0: onekit.http.Header
-	(*ServiceHeaders)(nil),              // 1: onekit.http.ServiceHeaders
-	(*MethodHeaders)(nil),               // 2: onekit.http.MethodHeaders
-	(*descriptorpb.ServiceOptions)(nil), // 3: google.protobuf.ServiceOptions
-	(*descriptorpb.MethodOptions)(nil),  // 4: google.protobuf.MethodOptions
+	(AuthType)(0),                       // 0: onekit.http.AuthType
+	(*Header)(nil),                      // 1: onekit.http.Header
+	(*ServiceHeaders)(nil),              // 2: onekit.http.ServiceHeaders
+	(*MethodHeaders)(nil),               // 3: onekit.http.MethodHeaders
+	(*descriptorpb.ServiceOptions)(nil), // 4: google.protobuf.ServiceOptions
+	(*descriptorpb.MethodOptions)(nil),  // 5: google.protobuf.MethodOptions
 }
 var file_proto_onekit_http_headers_proto_depIdxs = []int32{
-	0, // 0: onekit.http.ServiceHeaders.required_headers:type_name -> onekit.http.Header
-	0, // 1: onekit.http.MethodHeaders.required_headers:type_name -> onekit.http.Header
-	3, // 2: onekit.http.service_headers:extendee -> google.protobuf.ServiceOptions
-	4, // 3: onekit.http.method_headers:extendee -> google.protobuf.MethodOptions
-	1, // 4: onekit.http.service_headers:type_name -> onekit.http.ServiceHeaders
-	2, // 5: onekit.http.method_headers:type_name -> onekit.http.MethodHeaders
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	4, // [4:6] is the sub-list for extension type_name
-	2, // [2:4] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	0, // 0: onekit.http.Header.auth_type:type_name -> onekit.http.AuthType
+	1, // 1: onekit.http.ServiceHeaders.required_headers:type_name -> onekit.http.Header
+	1, // 2: onekit.http.MethodHeaders.required_headers:type_name -> onekit.http.Header
+	4, // 3: onekit.http.service_headers:extendee -> google.protobuf.ServiceOptions
+	5, // 4: onekit.http.method_headers:extendee -> google.protobuf.MethodOptions
+	2, // 5: onekit.http.service_headers:type_name -> onekit.http.ServiceHeaders
+	3, // 6: onekit.http.method_headers:type_name -> onekit.http.MethodHeaders
+	7, // [7:7] is the sub-list for method output_type
+	7, // [7:7] is the sub-list for method input_type
+	5, // [5:7] is the sub-list for extension type_name
+	3, // [3:5] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_proto_onekit_http_headers_proto_init() }
@@ -311,13 +404,14 @@ func file_proto_onekit_http_headers_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_onekit_http_headers_proto_rawDesc), len(file_proto_onekit_http_headers_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   3,
 			NumExtensions: 2,
 			NumServices:   0,
 		},
 		GoTypes:           file_proto_onekit_http_headers_proto_goTypes,
 		DependencyIndexes: file_proto_onekit_http_headers_proto_depIdxs,
+		EnumInfos:         file_proto_onekit_http_headers_proto_enumTypes,
 		MessageInfos:      file_proto_onekit_http_headers_proto_msgTypes,
 		ExtensionInfos:    file_proto_onekit_http_headers_proto_extTypes,
 	}.Build()

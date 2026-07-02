@@ -130,6 +130,13 @@ func TestTSClientGenGoldenFiles(t *testing.T) {
 				"empty_request_body_client.ts",
 			},
 		},
+		{
+			name:      "body field selection",
+			protoFile: "body_selection.proto",
+			expectedFiles: []string{
+				"body_selection_client.ts",
+			},
+		},
 	}
 
 	baseDir, err := os.Getwd()

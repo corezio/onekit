@@ -25,7 +25,7 @@ func RegisterEmptyRequestBodyServiceServer(server EmptyRequestBodyServiceServer,
 	pingHandler := BindingMiddleware[PingRequest](
 		genericHandler(server.Ping, config.errorHandler, config.marshalOpts), serviceHeaders, methodHeaders,
 		pingPathParams, pingQueryParams,
-		"POST", config.errorHandler, config.marshalOpts,
+		"POST", "", config.errorHandler, config.marshalOpts,
 	)
 
 	config.mux.Handle("POST /api/v1/ping", pingHandler)
@@ -34,7 +34,7 @@ func RegisterEmptyRequestBodyServiceServer(server EmptyRequestBodyServiceServer,
 	noArgsHandler := BindingMiddleware[NoArgsRequest](
 		genericHandler(server.NoArgs, config.errorHandler, config.marshalOpts), serviceHeaders, methodHeaders,
 		noArgsPathParams, noArgsQueryParams,
-		"GET", config.errorHandler, config.marshalOpts,
+		"GET", "", config.errorHandler, config.marshalOpts,
 	)
 
 	config.mux.Handle("GET /api/v1/no-args", noArgsHandler)

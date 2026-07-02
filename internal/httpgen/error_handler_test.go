@@ -309,7 +309,7 @@ func TestErrorHandlerEdgeCases(t *testing.T) {
 	t.Run("BindingMiddleware signature includes errorHandler", func(t *testing.T) {
 		if !strings.Contains(
 			files.binding,
-			"httpMethod string, errorHandler ErrorHandler, marshalOpts protojson.MarshalOptions) http.Handler",
+			"httpMethod string, bodyField string, errorHandler ErrorHandler, marshalOpts protojson.MarshalOptions) http.Handler",
 		) {
 			t.Error("BindingMiddleware should have errorHandler and marshalOpts as trailing parameters")
 		}

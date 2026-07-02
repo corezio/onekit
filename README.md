@@ -84,9 +84,9 @@ service UserService {
   };
 
   rpc CreateUser(CreateUserRequest) returns (User) {
-    option (onekit.http.post) = {
+    option (onekit.http.config) = {
       path: "/v1/users"
-      body: "*"
+      method: HTTP_METHOD_POST
     };
   }
 }

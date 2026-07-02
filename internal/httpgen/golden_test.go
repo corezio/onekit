@@ -211,6 +211,15 @@ func TestHTTPGenGoldenFiles(t *testing.T) {
 				"sse_http_config.pb.go",
 			},
 		},
+		{
+			name:      "body field selection",
+			protoFile: "body_selection.proto",
+			expectedFiles: []string{
+				"body_selection_http.pb.go",
+				"body_selection_http_binding.pb.go",
+				"body_selection_http_config.pb.go",
+			},
+		},
 	}
 
 	// Get paths

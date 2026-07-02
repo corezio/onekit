@@ -29,6 +29,12 @@ message HttpConfig {
   // The server sends events with Content-Type: text/event-stream.
   // Each event is the response message serialized as JSON in the SSE data field.
   bool stream = 3;
+
+  // Selects which part of the request message is the HTTP request body.
+  // "" or "*" (default): the entire request message is the body.
+  // "<field_name>": only that field (which must be a singular message field)
+  // is the body; the remaining fields bind from path and query parameters.
+  string body = 4;
 }
 
 // Extension for method options

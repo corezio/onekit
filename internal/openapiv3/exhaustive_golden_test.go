@@ -580,6 +580,51 @@ func TestExhaustiveGoldenFiles(t *testing.T) {
 			goldenFile:  "testdata/golden/json/SSEService.openapi.json",
 			format:      "json",
 		},
+		// security_headers.proto -> ApiKeyService (auth headers -> securitySchemes)
+		{
+			name:        "api_key_service_yaml",
+			protoFile:   "testdata/proto/security_headers.proto",
+			serviceName: "ApiKeyService",
+			goldenFile:  "testdata/golden/yaml/ApiKeyService.openapi.yaml",
+			format:      "yaml",
+		},
+		{
+			name:        "api_key_service_json",
+			protoFile:   "testdata/proto/security_headers.proto",
+			serviceName: "ApiKeyService",
+			goldenFile:  "testdata/golden/json/ApiKeyService.openapi.json",
+			format:      "json",
+		},
+		// security_headers.proto -> BearerService (bearer auth with custom scheme name)
+		{
+			name:        "bearer_service_yaml",
+			protoFile:   "testdata/proto/security_headers.proto",
+			serviceName: "BearerService",
+			goldenFile:  "testdata/golden/yaml/BearerService.openapi.yaml",
+			format:      "yaml",
+		},
+		{
+			name:        "bearer_service_json",
+			protoFile:   "testdata/proto/security_headers.proto",
+			serviceName: "BearerService",
+			goldenFile:  "testdata/golden/json/BearerService.openapi.json",
+			format:      "json",
+		},
+		// security_headers.proto -> MixedAuthService (basic auth + method-level API key)
+		{
+			name:        "mixed_auth_service_yaml",
+			protoFile:   "testdata/proto/security_headers.proto",
+			serviceName: "MixedAuthService",
+			goldenFile:  "testdata/golden/yaml/MixedAuthService.openapi.yaml",
+			format:      "yaml",
+		},
+		{
+			name:        "mixed_auth_service_json",
+			protoFile:   "testdata/proto/security_headers.proto",
+			serviceName: "MixedAuthService",
+			goldenFile:  "testdata/golden/json/MixedAuthService.openapi.json",
+			format:      "json",
+		},
 		// empty_request_body.proto -> EmptyRequestBodyService (empty-field requests)
 		{
 			name:        "empty_request_body_service_yaml",
@@ -593,6 +638,21 @@ func TestExhaustiveGoldenFiles(t *testing.T) {
 			protoFile:   "testdata/proto/empty_request_body.proto",
 			serviceName: "EmptyRequestBodyService",
 			goldenFile:  "testdata/golden/json/EmptyRequestBodyService.openapi.json",
+			format:      "json",
+		},
+		// body_selection.proto -> BodySelectService (body: "<field>" selection)
+		{
+			name:        "body_select_service_yaml",
+			protoFile:   "testdata/proto/body_selection.proto",
+			serviceName: "BodySelectService",
+			goldenFile:  "testdata/golden/yaml/BodySelectService.openapi.yaml",
+			format:      "yaml",
+		},
+		{
+			name:        "body_select_service_json",
+			protoFile:   "testdata/proto/body_selection.proto",
+			serviceName: "BodySelectService",
+			goldenFile:  "testdata/golden/json/BodySelectService.openapi.json",
 			format:      "json",
 		},
 	}

@@ -148,6 +148,13 @@ func TestClientGenGoldenFiles(t *testing.T) {
 				"sse_client.pb.go",
 			},
 		},
+		{
+			name:      "body field selection",
+			protoFile: "body_selection.proto",
+			expectedFiles: []string{
+				"body_selection_client.pb.go",
+			},
+		},
 	}
 
 	// Get paths

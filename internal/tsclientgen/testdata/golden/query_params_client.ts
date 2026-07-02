@@ -83,25 +83,40 @@ export class ApiError extends Error {
   }
 }
 
+export interface RetryOptions {
+  /** Total number of attempts including the first. Default 1 (no retries). */
+  maxAttempts?: number;
+  /** Delay before the first retry in milliseconds; doubles each retry. Default 250. */
+  baseDelayMs?: number;
+  /** Status codes that trigger a retry. Default [429, 502, 503, 504]. */
+  retryableStatuses?: number[];
+}
+
 export interface QueryParamServiceClientOptions {
   fetch?: typeof fetch;
   defaultHeaders?: Record<string, string>;
+  /** Retry policy for transient failures. Never applied to SSE streams. */
+  retry?: RetryOptions;
 }
 
 export interface QueryParamServiceCallOptions {
   headers?: Record<string, string>;
   signal?: AbortSignal;
+  /** Per-call retry policy; overrides the client-level policy. */
+  retry?: RetryOptions;
 }
 
 export class QueryParamServiceClient {
   private baseURL: string;
   private fetchFn: typeof fetch;
   private defaultHeaders: Record<string, string>;
+  private retry?: RetryOptions;
 
   constructor(baseURL: string, options?: QueryParamServiceClientOptions) {
     this.baseURL = baseURL.replace(/\/+$/, "");
     this.fetchFn = options?.fetch ?? globalThis.fetch;
     this.defaultHeaders = { ...options?.defaultHeaders };
+    this.retry = options?.retry;
   }
 
   async searchWithTypes(req: SearchWithTypesRequest, options?: QueryParamServiceCallOptions): Promise<SearchResponse> {
@@ -123,11 +138,11 @@ export class QueryParamServiceClient {
       ...options?.headers,
     };
 
-    const resp = await this.fetchFn(url, {
+    const resp = await this.doFetch(url, {
       method: "GET",
       headers,
       signal: options?.signal,
-    });
+    }, options?.retry ?? this.retry);
 
     if (!resp.ok) {
       return this.handleError(resp);
@@ -150,11 +165,11 @@ export class QueryParamServiceClient {
       ...options?.headers,
     };
 
-    const resp = await this.fetchFn(url, {
+    const resp = await this.doFetch(url, {
       method: "GET",
       headers,
       signal: options?.signal,
-    });
+    }, options?.retry ?? this.retry);
 
     if (!resp.ok) {
       return this.handleError(resp);
@@ -179,11 +194,11 @@ export class QueryParamServiceClient {
       ...options?.headers,
     };
 
-    const resp = await this.fetchFn(url, {
+    const resp = await this.doFetch(url, {
       method: "GET",
       headers,
       signal: options?.signal,
-    });
+    }, options?.retry ?? this.retry);
 
     if (!resp.ok) {
       return this.handleError(resp);
@@ -206,11 +221,11 @@ export class QueryParamServiceClient {
       ...options?.headers,
     };
 
-    const resp = await this.fetchFn(url, {
+    const resp = await this.doFetch(url, {
       method: "GET",
       headers,
       signal: options?.signal,
-    });
+    }, options?.retry ?? this.retry);
 
     if (!resp.ok) {
       return this.handleError(resp);
@@ -223,11 +238,11 @@ export class QueryParamServiceClient {
     let path = "/api/search/advanced";
     const params = new URLSearchParams();
     if (req.region != null && req.region !== "unspecified") params.set("region", String(req.region));
-    if (req.countries && req.countries.length > 0) req.countries.forEach(v => params.append("countries", v));
+    if (req.countries && req.countries.length > 0) req.countries.forEach(v => params.append("countries", String(v)));
     if (req.keyword != null && req.keyword !== "") params.set("keyword", String(req.keyword));
-    if (req.years && req.years.length > 0) req.years.forEach(v => params.append("years", v));
-    if (req.flags && req.flags.length > 0) req.flags.forEach(v => params.append("flags", v));
-    if (req.regions && req.regions.length > 0) req.regions.forEach(v => params.append("regions", v));
+    if (req.years && req.years.length > 0) req.years.forEach(v => params.append("years", String(v)));
+    if (req.flags && req.flags.length > 0) req.flags.forEach(v => params.append("flags", String(v)));
+    if (req.regions && req.regions.length > 0) req.regions.forEach(v => params.append("regions", String(v)));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
@@ -236,11 +251,11 @@ export class QueryParamServiceClient {
       ...options?.headers,
     };
 
-    const resp = await this.fetchFn(url, {
+    const resp = await this.doFetch(url, {
       method: "GET",
       headers,
       signal: options?.signal,
-    });
+    }, options?.retry ?? this.retry);
 
     if (!resp.ok) {
       return this.handleError(resp);
@@ -262,11 +277,11 @@ export class QueryParamServiceClient {
       ...options?.headers,
     };
 
-    const resp = await this.fetchFn(url, {
+    const resp = await this.doFetch(url, {
       method: "GET",
       headers,
       signal: options?.signal,
-    });
+    }, options?.retry ?? this.retry);
 
     if (!resp.ok) {
       return this.handleError(resp);
@@ -285,17 +300,42 @@ export class QueryParamServiceClient {
       ...options?.headers,
     };
 
-    const resp = await this.fetchFn(url, {
+    const resp = await this.doFetch(url, {
       method: "GET",
       headers,
       signal: options?.signal,
-    });
+    }, options?.retry ?? this.retry);
 
     if (!resp.ok) {
       return this.handleError(resp);
     }
 
     return await resp.json() as SearchResponse;
+  }
+
+  private async doFetch(url: string, init: RequestInit, retry?: RetryOptions): Promise<Response> {
+    const maxAttempts = Math.max(1, retry?.maxAttempts ?? 1);
+    const baseDelayMs = retry?.baseDelayMs ?? 250;
+    const retryableStatuses = retry?.retryableStatuses ?? [429, 502, 503, 504];
+    let lastError: unknown;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, baseDelayMs * 2 ** (attempt - 1)));
+      }
+      try {
+        const resp = await this.fetchFn(url, init);
+        if (attempt < maxAttempts - 1 && retryableStatuses.includes(resp.status)) {
+          lastError = new ApiError(resp.status, `Request failed with retryable status ${resp.status}`, "");
+          continue;
+        }
+        return resp;
+      } catch (e) {
+        // Aborts are intentional; never retry them.
+        if (e instanceof Error && e.name === "AbortError") throw e;
+        lastError = e;
+      }
+    }
+    throw lastError;
   }
 
   private async handleError(resp: Response): Promise<never> {

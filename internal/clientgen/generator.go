@@ -116,6 +116,9 @@ func (g *Generator) generateClientFile(file *protogen.File) error {
 	// Generate onekitUnmarshaler interface once at file level
 	g.generateOnekitUnmarshalerInterface(gf)
 
+	// Generate the shared retryable-status helper once at file level
+	g.generateRetryableStatusHelper(gf)
+
 	for _, service := range file.Services {
 		if err := g.generateServiceClient(gf, file, service); err != nil {
 			return err
@@ -195,6 +198,7 @@ func (g *Generator) writeImports(gf *protogen.GeneratedFile, needsBytes, needsUR
 		gf.P(`"net/url"`)
 	}
 	gf.P(`"strings"`)
+	gf.P(`"time"`)
 	gf.P()
 	gf.P(`"google.golang.org/protobuf/encoding/protojson"`)
 	gf.P(`"google.golang.org/protobuf/proto"`)
@@ -295,6 +299,8 @@ func (g *Generator) generateClientStruct(gf *protogen.GeneratedFile, serviceName
 	gf.P("contentType string")
 	gf.P("defaultHeaders map[string]string")
 	gf.P("discardUnknownFields bool")
+	gf.P("retryMaxAttempts int")
+	gf.P("retryBackoff time.Duration")
 	gf.P("}")
 	gf.P()
 
@@ -318,6 +324,19 @@ func (g *Generator) generateOnekitUnmarshalerInterface(gf *protogen.GeneratedFil
 	gf.P("// It allows passing protojson.UnmarshalOptions (e.g. DiscardUnknown) through custom unmarshalers.")
 	gf.P("type onekitUnmarshaler interface {")
 	gf.P("UnmarshalJSONOnekit(data []byte, opts protojson.UnmarshalOptions) error")
+	gf.P("}")
+	gf.P()
+}
+
+func (g *Generator) generateRetryableStatusHelper(gf *protogen.GeneratedFile) {
+	gf.P("// onekitIsRetryableStatus reports whether a status code is safe to retry:")
+	gf.P("// 429 Too Many Requests, 502 Bad Gateway, 503 Service Unavailable, 504 Gateway Timeout.")
+	gf.P("func onekitIsRetryableStatus(status int) bool {")
+	gf.P("switch status {")
+	gf.P("case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:")
+	gf.P("return true")
+	gf.P("}")
+	gf.P("return false")
 	gf.P("}")
 	gf.P()
 }
@@ -366,6 +385,19 @@ func (g *Generator) generateClientOptions(gf *protogen.GeneratedFile, serviceNam
 	gf.P("func With", serviceName, "DiscardUnknownFields(discard bool) ", serviceName, "ClientOption {")
 	gf.P("return func(c *", lowerName, "Client) {")
 	gf.P("c.discardUnknownFields = discard")
+	gf.P("}")
+	gf.P("}")
+	gf.P()
+
+	// With{Service}Retry
+	gf.P("// With", serviceName, "Retry enables automatic retries for transient failures.")
+	gf.P("// maxAttempts is the total number of attempts including the first (values < 1 disable retries).")
+	gf.P("// baseBackoff is the delay before the first retry; it doubles on each subsequent retry.")
+	gf.P("// Retried failures: transport errors and HTTP 429, 502, 503, 504. SSE streams are never retried.")
+	gf.P("func With", serviceName, "Retry(maxAttempts int, baseBackoff time.Duration) ", serviceName, "ClientOption {")
+	gf.P("return func(c *", lowerName, "Client) {")
+	gf.P("c.retryMaxAttempts = maxAttempts")
+	gf.P("c.retryBackoff = baseBackoff")
 	gf.P("}")
 	gf.P("}")
 	gf.P()
@@ -502,15 +534,16 @@ func (g *Generator) generateConstructor(gf *protogen.GeneratedFile, serviceName 
 
 // rpcMethodConfig holds the configuration for generating an RPC method.
 type rpcMethodConfig struct {
-	serviceName string
-	lowerName   string
-	methodName  string
-	httpMethod  string
-	fullPath    string
-	pathParams  []string
-	queryParams []annotations.QueryParam
-	hasBody     bool
-	isSSE       bool
+	serviceName     string
+	lowerName       string
+	methodName      string
+	httpMethod      string
+	fullPath        string
+	pathParams      []string
+	queryParams     []annotations.QueryParam
+	hasBody         bool
+	isSSE           bool
+	bodyFieldGoName string // non-empty when body: "<field>" selects a sub-message body
 }
 
 func (g *Generator) buildRPCMethodConfig(service *protogen.Service, method *protogen.Method) *rpcMethodConfig {
@@ -561,6 +594,14 @@ func (g *Generator) generateRPCMethod(
 	method *protogen.Method,
 ) error {
 	cfg := g.buildRPCMethodConfig(service, method)
+
+	bodyField, err := annotations.GetBodyField(method)
+	if err != nil {
+		return err
+	}
+	if bodyField != nil {
+		cfg.bodyFieldGoName = bodyField.GoName
+	}
 
 	if cfg.isSSE {
 		return g.generateSSERPCMethod(gf, cfg, method)
@@ -701,7 +742,13 @@ func (g *Generator) generateRPCMethodCallOptions(gf *protogen.GeneratedFile, cfg
 
 func (g *Generator) generateRPCMethodURLBuilding(gf *protogen.GeneratedFile, cfg *rpcMethodConfig) {
 	gf.P("// Build URL")
-	g.generateURLBuilding(gf, cfg.fullPath, cfg.pathParams, cfg.queryParams, cfg.httpMethod)
+	httpMethod := cfg.httpMethod
+	if cfg.bodyFieldGoName != "" {
+		// With body field selection, non-body fields bind from path/query even on
+		// POST/PUT/PATCH, so force query parameter encoding.
+		httpMethod = "GET"
+	}
+	g.generateURLBuilding(gf, cfg.fullPath, cfg.pathParams, cfg.queryParams, httpMethod)
 }
 
 func (g *Generator) generateRPCMethodRequest(gf *protogen.GeneratedFile, cfg *rpcMethodConfig) {
@@ -713,8 +760,13 @@ func (g *Generator) generateRPCMethodRequest(gf *protogen.GeneratedFile, cfg *rp
 	gf.P()
 
 	if cfg.hasBody {
-		gf.P("// Marshal request body")
-		gf.P("body, err := c.marshalRequest(req, contentType)")
+		if cfg.bodyFieldGoName != "" {
+			gf.P("// Marshal only the selected body field (body field selection)")
+			gf.P("body, err := c.marshalRequest(req.Get", cfg.bodyFieldGoName, "(), contentType)")
+		} else {
+			gf.P("// Marshal request body")
+			gf.P("body, err := c.marshalRequest(req, contentType)")
+		}
 		gf.P("if err != nil {")
 		gf.P("return nil, fmt.Errorf(\"failed to marshal request: %w\", err)")
 		gf.P("}")
@@ -745,8 +797,8 @@ func (g *Generator) generateRPCMethodHeaders(gf *protogen.GeneratedFile, _ *rpcM
 
 func (g *Generator) generateRPCMethodExecution(gf *protogen.GeneratedFile) {
 	gf.P()
-	gf.P("// Execute request")
-	gf.P("resp, err := c.httpClient.Do(httpReq)")
+	gf.P("// Execute request (with retries when configured)")
+	gf.P("resp, err := c.doRequest(httpReq)")
 	gf.P("if err != nil {")
 	gf.P("return nil, fmt.Errorf(\"failed to execute request: %w\", err)")
 	gf.P("}")
@@ -844,8 +896,58 @@ func (g *Generator) generateQueryParamEncoding(gf *protogen.GeneratedFile, qp an
 func (g *Generator) generateHelperMethods(gf *protogen.GeneratedFile, serviceName string) {
 	lowerName := annotations.LowerFirst(serviceName)
 	g.generateMarshalRequestMethod(gf, lowerName)
+	g.generateDoRequestMethod(gf, lowerName)
 	g.generateHandleErrorResponseMethod(gf, lowerName)
 	g.generateUnmarshalResponseMethod(gf, lowerName)
+}
+
+// generateDoRequestMethod emits the request executor with optional retry support.
+// Request bodies created via http.NewRequestWithContext(bytes.Reader) carry a
+// GetBody func, so retried attempts can replay the body safely.
+func (g *Generator) generateDoRequestMethod(gf *protogen.GeneratedFile, lowerName string) {
+	gf.P("func (c *", lowerName, "Client) doRequest(httpReq *http.Request) (*http.Response, error) {")
+	gf.P("maxAttempts := c.retryMaxAttempts")
+	gf.P("if maxAttempts < 1 {")
+	gf.P("maxAttempts = 1")
+	gf.P("}")
+	gf.P("baseBackoff := c.retryBackoff")
+	gf.P("if baseBackoff <= 0 {")
+	gf.P("baseBackoff = 250 * time.Millisecond")
+	gf.P("}")
+	gf.P()
+	gf.P("var lastErr error")
+	gf.P("for attempt := 0; attempt < maxAttempts; attempt++ {")
+	gf.P("if attempt > 0 {")
+	gf.P("backoff := baseBackoff << (attempt - 1)")
+	gf.P("select {")
+	gf.P("case <-httpReq.Context().Done():")
+	gf.P("return nil, httpReq.Context().Err()")
+	gf.P("case <-time.After(backoff):")
+	gf.P("}")
+	gf.P("if httpReq.GetBody != nil {")
+	gf.P("newBody, bodyErr := httpReq.GetBody()")
+	gf.P("if bodyErr != nil {")
+	gf.P("return nil, fmt.Errorf(\"failed to rewind request body for retry: %w\", bodyErr)")
+	gf.P("}")
+	gf.P("httpReq.Body = newBody")
+	gf.P("}")
+	gf.P("}")
+	gf.P()
+	gf.P("resp, err := c.httpClient.Do(httpReq)")
+	gf.P("if err != nil {")
+	gf.P("lastErr = err")
+	gf.P("continue")
+	gf.P("}")
+	gf.P("if attempt < maxAttempts-1 && onekitIsRetryableStatus(resp.StatusCode) {")
+	gf.P("_ = resp.Body.Close()")
+	gf.P("lastErr = fmt.Errorf(\"request failed with retryable status %d\", resp.StatusCode)")
+	gf.P("continue")
+	gf.P("}")
+	gf.P("return resp, nil")
+	gf.P("}")
+	gf.P("return nil, lastErr")
+	gf.P("}")
+	gf.P()
 }
 
 func (g *Generator) generateMarshalRequestMethod(gf *protogen.GeneratedFile, lowerName string) {

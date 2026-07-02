@@ -130,6 +130,13 @@ func TestTSServerGenGoldenFiles(t *testing.T) {
 				"sse_server.ts",
 			},
 		},
+		{
+			name:      "body field selection",
+			protoFile: "body_selection.proto",
+			expectedFiles: []string{
+				"body_selection_server.ts",
+			},
+		},
 	}
 
 	baseDir, err := os.Getwd()

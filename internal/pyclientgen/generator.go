@@ -11,13 +11,17 @@
 //   - An error hierarchy (ApiError, ValidationError, per-*Error-message classes)
 //   - One client class per service with typed options and per-call options
 //
-// Server-Sent Events methods are detected and emit stubs that raise NotImplementedError.
+// Server-Sent Events methods (stream=true) return an Iterator of the event message.
+// Streaming uses the transport's stream() method (UrllibTransport implements it);
+// custom transports opt in by providing a compatible stream().
 package pyclientgen
 
 import (
 	"fmt"
 
 	"google.golang.org/protobuf/compiler/protogen"
+
+	"github.com/1homsi/onekit/internal/annotations"
 )
 
 // Generator produces Python HTTP client code for protobuf services.
@@ -50,6 +54,19 @@ func (g *Generator) generateFile(file *protogen.File) error {
 	return g.generateClientFile(file)
 }
 
+// fileHasSSEMethods returns true if any service method in the file is annotated
+// with stream=true. Gates emission of the SSE transport machinery.
+func fileHasSSEMethods(file *protogen.File) bool {
+	for _, service := range file.Services {
+		for _, method := range service.Methods {
+			if cfg := annotations.GetMethodHTTPConfig(method); cfg != nil && cfg.Stream {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // hasGeneratableTypes returns true if the file has messages or enums worth emitting
 // even when no service is declared. The generator emits message dataclasses and
 // IntEnum classes alongside the client.
@@ -65,9 +82,14 @@ func (g *Generator) generateClientFile(file *protogen.File) error {
 
 	collected := collectFileTypes(file)
 
+	hasSSE := fileHasSSEMethods(file)
+
 	writeHeader(p, file)
 	writeImports(p, collected)
-	writeTransport(p)
+	if hasSSE {
+		writeSseTransport(p)
+	}
+	writeTransport(p, hasSSE)
 
 	// Enums must precede the error classes — an *Error message with an enum
 	// field carries a default value expression like `code: Reason = Reason.X`
@@ -83,7 +105,9 @@ func (g *Generator) generateClientFile(file *protogen.File) error {
 	}
 
 	for _, service := range file.Services {
-		writeServiceClient(p, service)
+		if err := writeServiceClient(p, service); err != nil {
+			return err
+		}
 	}
 
 	return nil

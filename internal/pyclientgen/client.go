@@ -12,13 +12,13 @@ import (
 
 // writeServiceClient emits a single client class for a proto service, including
 // the typed *ClientOptions and *CallOptions dataclasses, header surface, and
-// per-RPC methods. SSE methods (stream=true) raise NotImplementedError.
-func writeServiceClient(p printer, service *protogen.Service) {
+// per-RPC methods. SSE methods (stream=true) return an Iterator of event messages.
+func writeServiceClient(p printer, service *protogen.Service) error {
 	serviceName := string(service.Desc.Name())
 
 	writeClientOptionsClass(p, service, serviceName)
 	writeCallOptionsClass(p, service, serviceName)
-	writeClientClass(p, service, serviceName)
+	return writeClientClass(p, service, serviceName)
 }
 
 func writeClientOptionsClass(p printer, service *protogen.Service, serviceName string) {
@@ -29,6 +29,11 @@ func writeClientOptionsClass(p printer, service *protogen.Service, serviceName s
 	p("    default_headers: Optional[Mapping[str, str]] = None")
 	p("    timeout: Optional[float] = None")
 	p(`    content_type: str = "application/json"`)
+	p("    # Total attempts including the first (1 = no retries). Transport errors and")
+	p("    # HTTP 429/502/503/504 are retried with exponential backoff. SSE never retries.")
+	p("    max_retry_attempts: int = 1")
+	p("    # Delay in seconds before the first retry; doubles on each subsequent retry.")
+	p("    retry_backoff: float = 0.25")
 
 	// Typed kwargs for every service-level header annotation.
 	serviceHeaders := annotations.GetServiceHeaders(service)
@@ -67,18 +72,21 @@ func writeCallOptionsClass(p printer, service *protogen.Service, serviceName str
 	p("")
 }
 
-func writeClientClass(p printer, service *protogen.Service, serviceName string) {
+func writeClientClass(p printer, service *protogen.Service, serviceName string) error {
 	p("class %sClient:", serviceName)
 	p(`    """Generated client for %s."""`, service.Desc.FullName())
 
 	writeClientConstructor(p, service, serviceName)
 
 	for _, method := range service.Methods {
-		writeRPCMethod(p, service, method, serviceName)
+		if err := writeRPCMethod(p, service, method, serviceName); err != nil {
+			return err
+		}
 	}
 
 	writeErrorHandler(p)
 	p("")
+	return nil
 }
 
 func writeClientConstructor(p printer, service *protogen.Service, serviceName string) {
@@ -93,6 +101,8 @@ func writeClientConstructor(p printer, service *protogen.Service, serviceName st
 	p("        self._default_headers: dict[str, str] = dict(opts.default_headers or {})")
 	p("        self._timeout = opts.timeout")
 	p("        self._content_type = opts.content_type")
+	p("        self._max_retry_attempts = opts.max_retry_attempts")
+	p("        self._retry_backoff = opts.retry_backoff")
 
 	// Apply typed service-header options onto default headers.
 	for _, header := range annotations.GetServiceHeaders(service) {
@@ -104,12 +114,20 @@ func writeClientConstructor(p printer, service *protogen.Service, serviceName st
 	p("")
 }
 
-func writeRPCMethod(p printer, service *protogen.Service, method *protogen.Method, serviceName string) {
+func writeRPCMethod(p printer, service *protogen.Service, method *protogen.Method, serviceName string) error {
 	cfg := buildMethodConfig(service, method)
 
+	bodyField, err := annotations.GetBodyField(method)
+	if err != nil {
+		return err
+	}
+	if bodyField != nil {
+		cfg.bodyFieldPyName = escapePyKeyword(string(bodyField.Desc.Name()))
+	}
+
 	if cfg.isSSE {
-		writeSSEMethodStub(p, method, serviceName, cfg)
-		return
+		writeSSEMethod(p, service, method, serviceName, cfg)
+		return nil
 	}
 
 	pyMethodName := snakeCase(string(method.Desc.Name()))
@@ -134,9 +152,18 @@ func writeRPCMethod(p printer, service *protogen.Service, method *protogen.Metho
 	writeTransportCall(p, cfg)
 	writeResponseParsing(p, method)
 	p("")
+	return nil
 }
 
-func writeSSEMethodStub(p printer, method *protogen.Method, serviceName string, cfg *methodConfig) {
+// writeSSEMethod emits a generator method that opens an SSE connection through the
+// transport's stream() extension and yields one decoded event message per SSE frame.
+func writeSSEMethod(
+	p printer,
+	service *protogen.Service,
+	method *protogen.Method,
+	serviceName string,
+	cfg *methodConfig,
+) {
 	pyMethodName := snakeCase(string(method.Desc.Name()))
 	inputType := pythonTypeName(method.Input)
 	outputType := resolveOutputType(method)
@@ -146,12 +173,64 @@ func writeSSEMethodStub(p printer, method *protogen.Method, serviceName string, 
 	p("        req: %s,", inputType)
 	p("        options: Optional[%sCallOptions] = None,", serviceName)
 	p("    ) -> Iterator[%s]:", outputType)
-	p(`        """SSE streaming is not yet supported by protoc-gen-onekit-py-client."""`)
-	p(`        raise NotImplementedError(`)
-	p(`            "SSE streaming is not yet supported in py-client. "`)
-	p(`            "Track support at https://github.com/1homsi/onekit/issues (label: py-client)."`)
-	p(`        )`)
-	_ = cfg
+	p(`        """Calls %s (Server-Sent Events stream)."""`, method.Desc.FullName())
+	p("        opts = options or %sCallOptions()", serviceName)
+
+	writePathBuilding(p, cfg)
+	writeQueryBuilding(p, cfg)
+	writeSSEHeaderBuilding(p, service, method, cfg)
+	writeBodyBuilding(p, cfg)
+
+	p(`        stream = getattr(self._transport, "stream", None)`)
+	p("        if stream is None:")
+	p("            raise TypeError(")
+	p(`                "transport does not support SSE streaming; "`)
+	p(`                "provide a stream() method (see UrllibTransport.stream)"`)
+	p("            )")
+	p("        conn: SseConnection = stream(")
+	p(`            method="%s",`, cfg.httpMethod)
+	p("            url=self._base_url + path,")
+	p("            headers=headers,")
+	p("            body=body,")
+	p("            timeout=opts.timeout if opts.timeout is not None else self._timeout,")
+	p("        )")
+	p("        if conn.status >= 400:")
+	p("            error_body = conn.read_body()")
+	p("            conn.close()")
+	p("            self._raise_for_status(HttpResponse(")
+	p("                status=conn.status,")
+	p("                headers=conn.headers,")
+	p("                body=error_body,")
+	p("            ))")
+	p("        try:")
+	p("            for data in _iter_sse_data(conn.iter_lines()):")
+	p("                yield %s.from_dict(json.loads(data))", outputType)
+	p("        finally:")
+	p("            conn.close()")
+	p("")
+}
+
+// writeSSEHeaderBuilding mirrors writeHeaderBuilding but negotiates an SSE response.
+// Content-Type is only sent when the request carries a body.
+func writeSSEHeaderBuilding(p printer, service *protogen.Service, method *protogen.Method, cfg *methodConfig) {
+	p("        headers: dict[str, str] = dict(self._default_headers)")
+	if cfg.hasBody {
+		p(`        headers["Content-Type"] = "application/json"`)
+	}
+	p(`        headers["Accept"] = "text/event-stream"`)
+	p("        if opts.headers:")
+	p("            headers.update(opts.headers)")
+
+	for _, header := range annotations.GetServiceHeaders(service) {
+		propName := headerOptionName(header.GetName())
+		p("        if opts.%s is not None:", propName)
+		p(`            headers["%s"] = opts.%s`, header.GetName(), propName)
+	}
+	for _, header := range annotations.GetMethodHeaders(method) {
+		propName := headerOptionName(header.GetName())
+		p("        if opts.%s is not None:", propName)
+		p(`            headers["%s"] = opts.%s`, header.GetName(), propName)
+	}
 }
 
 func writePathBuilding(p printer, cfg *methodConfig) {
@@ -163,7 +242,11 @@ func writePathBuilding(p printer, cfg *methodConfig) {
 }
 
 func writeQueryBuilding(p printer, cfg *methodConfig) {
-	if cfg.httpMethod != http.MethodGet && cfg.httpMethod != http.MethodDelete {
+	// With body field selection, non-body fields bind from path/query even on
+	// POST/PUT/PATCH, so query encoding applies there too.
+	useQuery := cfg.httpMethod == http.MethodGet || cfg.httpMethod == http.MethodDelete ||
+		cfg.bodyFieldPyName != ""
+	if !useQuery {
 		return
 	}
 	if len(cfg.queryParams) == 0 {
@@ -225,11 +308,16 @@ func writeBodyBuilding(p printer, cfg *methodConfig) {
 		p("        body: Optional[bytes] = None")
 		return
 	}
+	if cfg.bodyFieldPyName != "" {
+		p("        _body_msg = req.%s", cfg.bodyFieldPyName)
+		p(`        body = json.dumps(_body_msg.to_dict() if _body_msg is not None else {}).encode("utf-8")`)
+		return
+	}
 	p(`        body = json.dumps(req.to_dict()).encode("utf-8")`)
 }
 
 func writeTransportCall(p printer, cfg *methodConfig) {
-	p("        resp = self._transport.request(")
+	p("        resp = self._request_with_retries(")
 	p(`            method="%s",`, cfg.httpMethod)
 	p(`            url=self._base_url + path,`)
 	p("            headers=headers,")
@@ -252,6 +340,33 @@ func writeResponseParsing(p printer, method *protogen.Method) {
 }
 
 func writeErrorHandler(p printer) {
+	p("    def _request_with_retries(")
+	p("        self,")
+	p("        method: str,")
+	p("        url: str,")
+	p("        headers: Mapping[str, str],")
+	p("        body: Optional[bytes],")
+	p("        timeout: Optional[float],")
+	p("    ) -> HttpResponse:")
+	p(`        """Executes a request, retrying transport errors and 429/502/503/504."""`)
+	p("        attempts = max(1, self._max_retry_attempts)")
+	p("        last_exc: Optional[Exception] = None")
+	p("        for attempt in range(attempts):")
+	p("            if attempt > 0:")
+	p("                time.sleep(self._retry_backoff * (2 ** (attempt - 1)))")
+	p("            try:")
+	p("                resp = self._transport.request(")
+	p("                    method=method, url=url, headers=headers, body=body, timeout=timeout,")
+	p("                )")
+	p("            except Exception as exc:  # noqa: BLE001 - transport errors vary by implementation")
+	p("                last_exc = exc")
+	p("                continue")
+	p("            if attempt < attempts - 1 and resp.status in (429, 502, 503, 504):")
+	p("                continue")
+	p("            return resp")
+	p("        assert last_exc is not None")
+	p("        raise last_exc")
+	p("")
 	p("    def _raise_for_status(self, resp: HttpResponse) -> None:")
 	p(`        """Map a non-2xx response to the most specific exception available."""`)
 	p(`        body = resp.body or b""`)
@@ -285,13 +400,14 @@ func resolveOutputType(method *protogen.Method) string {
 
 // methodConfig captures every detail of an RPC method needed for generation.
 type methodConfig struct {
-	methodName  string
-	httpMethod  string
-	fullPath    string
-	pathParams  []string
-	queryParams []annotations.QueryParam
-	hasBody     bool
-	isSSE       bool
+	methodName      string
+	httpMethod      string
+	fullPath        string
+	pathParams      []string
+	queryParams     []annotations.QueryParam
+	hasBody         bool
+	isSSE           bool
+	bodyFieldPyName string // non-empty when body: "<field>" selects a sub-message body
 }
 
 func buildMethodConfig(service *protogen.Service, method *protogen.Method) *methodConfig {

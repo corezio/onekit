@@ -131,6 +131,13 @@ func TestPyClientGenGoldenFiles(t *testing.T) {
 			},
 		},
 		{
+			name:      "body field selection",
+			protoFile: "body_selection.proto",
+			expectedFiles: []string{
+				"body_selection_client.py",
+			},
+		},
+		{
 			name:      "per-Error exception classes",
 			protoFile: "errors.proto",
 			expectedFiles: []string{

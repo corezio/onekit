@@ -24,7 +24,7 @@ func RegisterStockServiceServer(server StockServiceServer, opts ...ServerOption)
 	getStocksHandler := BindingMiddleware[GetStocksRequest](
 		genericHandler(server.GetStocks, config.errorHandler, config.marshalOpts), serviceHeaders, methodHeaders,
 		getStocksPathParams, getStocksQueryParams,
-		"GET", config.errorHandler, config.marshalOpts,
+		"GET", "", config.errorHandler, config.marshalOpts,
 	)
 
 	config.mux.Handle("GET /api/v1/stocks/{market}", getStocksHandler)

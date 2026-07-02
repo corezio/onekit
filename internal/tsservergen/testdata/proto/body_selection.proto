@@ -1,0 +1,72 @@
+// Test proto for body field selection (body: "<field>" on onekit.http.config)
+syntax = "proto3";
+
+package test.httpgen.bodyselect;
+
+option go_package = "github.com/1homsi/onekit/internal/httpgen/testdata/generated;generated";
+
+import "onekit/http/annotations.proto";
+
+// BodySelectService tests binding the HTTP body to a selected sub-message field.
+service BodySelectService {
+  option (onekit.http.service_config) = {
+    base_path: "/api/v1"
+  };
+
+  // PUT with a selected body field plus a path param and a query param
+  rpc UpdateProfile(UpdateProfileRequest) returns (Profile) {
+    option (onekit.http.config) = {
+      path: "/users/{user_id}/profile"
+      method: HTTP_METHOD_PUT
+      body: "profile"
+    };
+  }
+
+  // POST with a selected body field and a query param, no path params
+  rpc CreateNote(CreateNoteRequest) returns (Note) {
+    option (onekit.http.config) = {
+      path: "/notes"
+      method: HTTP_METHOD_POST
+      body: "note"
+    };
+  }
+
+  // Baseline: whole-message body (body unset)
+  rpc CreateProfile(CreateProfileRequest) returns (Profile) {
+    option (onekit.http.config) = {
+      path: "/profiles"
+      method: HTTP_METHOD_POST
+    };
+  }
+}
+
+message UpdateProfileRequest {
+  // Bound from the URL path
+  string user_id = 1;
+  // Bound from the query string, even though this is a PUT
+  bool notify = 2 [(onekit.http.query) = { name: "notify" }];
+  // The HTTP body is exactly this message
+  Profile profile = 3;
+}
+
+message CreateNoteRequest {
+  // Bound from the query string, even though this is a POST
+  string collection = 1 [(onekit.http.query) = { name: "collection" }];
+  // The HTTP body is exactly this message
+  Note note = 2;
+}
+
+message CreateProfileRequest {
+  Profile profile = 1;
+}
+
+message Profile {
+  string display_name = 1;
+  string bio = 2;
+}
+
+message Note {
+  string id = 1;
+  string title = 2;
+  string content = 3;
+}

@@ -9,6 +9,7 @@ func writeImports(p printer, _ *collectedTypes) {
 	p("import base64")
 	p("import binascii")
 	p("import json")
+	p("import time")
 	p("import urllib.error")
 	p("import urllib.parse")
 	p("import urllib.request")

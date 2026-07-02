@@ -130,9 +130,20 @@ export class ApiError extends Error {
   }
 }
 
+export interface RetryOptions {
+  /** Total number of attempts including the first. Default 1 (no retries). */
+  maxAttempts?: number;
+  /** Delay before the first retry in milliseconds; doubles each retry. Default 250. */
+  baseDelayMs?: number;
+  /** Status codes that trigger a retry. Default [429, 502, 503, 504]. */
+  retryableStatuses?: number[];
+}
+
 export interface FeatureServiceClientOptions {
   fetch?: typeof fetch;
   defaultHeaders?: Record<string, string>;
+  /** Retry policy for transient failures. Never applied to SSE streams. */
+  retry?: RetryOptions;
   apiKey?: string;
   tenantId?: string;
 }
@@ -140,6 +151,8 @@ export interface FeatureServiceClientOptions {
 export interface FeatureServiceCallOptions {
   headers?: Record<string, string>;
   signal?: AbortSignal;
+  /** Per-call retry policy; overrides the client-level policy. */
+  retry?: RetryOptions;
   apiKey?: string;
   tenantId?: string;
   requestId?: string;
@@ -150,11 +163,13 @@ export class FeatureServiceClient {
   private baseURL: string;
   private fetchFn: typeof fetch;
   private defaultHeaders: Record<string, string>;
+  private retry?: RetryOptions;
 
   constructor(baseURL: string, options?: FeatureServiceClientOptions) {
     this.baseURL = baseURL.replace(/\/+$/, "");
     this.fetchFn = options?.fetch ?? globalThis.fetch;
     this.defaultHeaders = { ...options?.defaultHeaders };
+    this.retry = options?.retry;
     if (options?.apiKey) {
       this.defaultHeaders["X-API-Key"] = options.apiKey;
     }
@@ -179,11 +194,11 @@ export class FeatureServiceClient {
     if (options?.apiKey) headers["X-API-Key"] = options.apiKey;
     if (options?.tenantId) headers["X-Tenant-ID"] = options.tenantId;
 
-    const resp = await this.fetchFn(url, {
+    const resp = await this.doFetch(url, {
       method: "GET",
       headers,
       signal: options?.signal,
-    });
+    }, options?.retry ?? this.retry);
 
     if (!resp.ok) {
       return this.handleError(resp);
@@ -205,11 +220,11 @@ export class FeatureServiceClient {
     if (options?.apiKey) headers["X-API-Key"] = options.apiKey;
     if (options?.tenantId) headers["X-Tenant-ID"] = options.tenantId;
 
-    const resp = await this.fetchFn(url, {
+    const resp = await this.doFetch(url, {
       method: "GET",
       headers,
       signal: options?.signal,
-    });
+    }, options?.retry ?? this.retry);
 
     if (!resp.ok) {
       return this.handleError(resp);
@@ -231,12 +246,12 @@ export class FeatureServiceClient {
     if (options?.tenantId) headers["X-Tenant-ID"] = options.tenantId;
     if (options?.requestId) headers["X-Request-ID"] = options.requestId;
 
-    const resp = await this.fetchFn(url, {
+    const resp = await this.doFetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(req),
       signal: options?.signal,
-    });
+    }, options?.retry ?? this.retry);
 
     if (!resp.ok) {
       return this.handleError(resp);
@@ -259,12 +274,12 @@ export class FeatureServiceClient {
     if (options?.tenantId) headers["X-Tenant-ID"] = options.tenantId;
     if (options?.idempotencyKey) headers["X-Idempotency-Key"] = options.idempotencyKey;
 
-    const resp = await this.fetchFn(url, {
+    const resp = await this.doFetch(url, {
       method: "PUT",
       headers,
       body: JSON.stringify(req),
       signal: options?.signal,
-    });
+    }, options?.retry ?? this.retry);
 
     if (!resp.ok) {
       return this.handleError(resp);
@@ -285,12 +300,12 @@ export class FeatureServiceClient {
     if (options?.apiKey) headers["X-API-Key"] = options.apiKey;
     if (options?.tenantId) headers["X-Tenant-ID"] = options.tenantId;
 
-    const resp = await this.fetchFn(url, {
+    const resp = await this.doFetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(req),
       signal: options?.signal,
-    });
+    }, options?.retry ?? this.retry);
 
     if (!resp.ok) {
       return this.handleError(resp);
@@ -311,12 +326,12 @@ export class FeatureServiceClient {
     if (options?.apiKey) headers["X-API-Key"] = options.apiKey;
     if (options?.tenantId) headers["X-Tenant-ID"] = options.tenantId;
 
-    const resp = await this.fetchFn(url, {
+    const resp = await this.doFetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(req),
       signal: options?.signal,
-    });
+    }, options?.retry ?? this.retry);
 
     if (!resp.ok) {
       return this.handleError(resp);
@@ -337,12 +352,12 @@ export class FeatureServiceClient {
     if (options?.apiKey) headers["X-API-Key"] = options.apiKey;
     if (options?.tenantId) headers["X-Tenant-ID"] = options.tenantId;
 
-    const resp = await this.fetchFn(url, {
+    const resp = await this.doFetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(req),
       signal: options?.signal,
-    });
+    }, options?.retry ?? this.retry);
 
     if (!resp.ok) {
       return this.handleError(resp);
@@ -363,18 +378,43 @@ export class FeatureServiceClient {
     if (options?.apiKey) headers["X-API-Key"] = options.apiKey;
     if (options?.tenantId) headers["X-Tenant-ID"] = options.tenantId;
 
-    const resp = await this.fetchFn(url, {
+    const resp = await this.doFetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(req),
       signal: options?.signal,
-    });
+    }, options?.retry ?? this.retry);
 
     if (!resp.ok) {
       return this.handleError(resp);
     }
 
     return await resp.json() as Record<string, Bar[]>;
+  }
+
+  private async doFetch(url: string, init: RequestInit, retry?: RetryOptions): Promise<Response> {
+    const maxAttempts = Math.max(1, retry?.maxAttempts ?? 1);
+    const baseDelayMs = retry?.baseDelayMs ?? 250;
+    const retryableStatuses = retry?.retryableStatuses ?? [429, 502, 503, 504];
+    let lastError: unknown;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, baseDelayMs * 2 ** (attempt - 1)));
+      }
+      try {
+        const resp = await this.fetchFn(url, init);
+        if (attempt < maxAttempts - 1 && retryableStatuses.includes(resp.status)) {
+          lastError = new ApiError(resp.status, `Request failed with retryable status ${resp.status}`, "");
+          continue;
+        }
+        return resp;
+      } catch (e) {
+        // Aborts are intentional; never retry them.
+        if (e instanceof Error && e.name === "AbortError") throw e;
+        lastError = e;
+      }
+    }
+    throw lastError;
   }
 
   private async handleError(resp: Response): Promise<never> {

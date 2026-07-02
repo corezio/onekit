@@ -24,7 +24,7 @@ func RegisterEnumEncodingServiceServer(server EnumEncodingServiceServer, opts ..
 	getEnumTestHandler := BindingMiddleware[GetEnumTestRequest](
 		genericHandler(server.GetEnumTest, config.errorHandler, config.marshalOpts), serviceHeaders, methodHeaders,
 		getEnumTestPathParams, getEnumTestQueryParams,
-		"GET", config.errorHandler, config.marshalOpts,
+		"GET", "", config.errorHandler, config.marshalOpts,
 	)
 
 	config.mux.Handle("GET /api/v1/test/enum/{id}", getEnumTestHandler)

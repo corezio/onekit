@@ -25,7 +25,7 @@ func RegisterNullableServiceServer(server NullableServiceServer, opts ...ServerO
 	getUserHandler := BindingMiddleware[GetUserRequest](
 		genericHandler(server.GetUser, config.errorHandler, config.marshalOpts), serviceHeaders, methodHeaders,
 		getUserPathParams, getUserQueryParams,
-		"GET", config.errorHandler, config.marshalOpts,
+		"GET", "", config.errorHandler, config.marshalOpts,
 	)
 
 	config.mux.Handle("GET /api/v1/users/{id}", getUserHandler)
@@ -34,7 +34,7 @@ func RegisterNullableServiceServer(server NullableServiceServer, opts ...ServerO
 	updateUserHandler := BindingMiddleware[UpdateUserRequest](
 		genericHandler(server.UpdateUser, config.errorHandler, config.marshalOpts), serviceHeaders, methodHeaders,
 		updateUserPathParams, updateUserQueryParams,
-		"PUT", config.errorHandler, config.marshalOpts,
+		"PUT", "", config.errorHandler, config.marshalOpts,
 	)
 
 	config.mux.Handle("PUT /api/v1/users/{id}", updateUserHandler)

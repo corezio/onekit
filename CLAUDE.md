@@ -383,6 +383,45 @@ service SSEService {
 
 `stream: true` on the `HttpConfig` annotation changes how all 5 generators handle the RPC. The response message becomes the type of each SSE event, not a single response. Works with path params, query params, and headers -- the same annotation features available to unary RPCs.
 
+**Body Field Selection** - Bind the HTTP body to a single sub-message field with `body: "<field>"`:
+```protobuf
+service ProfileService {
+  rpc UpdateProfile(UpdateProfileRequest) returns (Profile) {
+    option (onekit.http.config) = {
+      path: "/users/{user_id}/profile"
+      method: HTTP_METHOD_PUT
+      body: "profile"  // HTTP body is exactly the Profile message
+    };
+  }
+}
+
+message UpdateProfileRequest {
+  string user_id = 1;                                        // from URL path
+  bool notify = 2 [(onekit.http.query) = { name: "notify" }]; // from query string
+  Profile profile = 3;                                        // the HTTP body
+}
+// PUT /users/u42/profile?notify=true with body {"displayName":"Alice","bio":"..."}
+// Without body selection the request body would be the whole UpdateProfileRequest.
+```
+
+`body` must name a singular message field on the request. `""` and `"*"` keep the default whole-message body. All generators honor it: the Go server unmarshals the body into the selected field (path/query params bind afterwards and take precedence), the Go/TS/Python clients marshal only that field and encode query-annotated fields into the URL even on POST/PUT/PATCH, the TS server wraps the parsed body under the field before calling the handler, and OpenAPI references the sub-message schema in `requestBody` with the remaining fields as parameters.
+
+**Client Retries** - All three clients support opt-in retries with exponential backoff for transport errors and HTTP 429/502/503/504 (SSE never retries):
+```go
+// Go: WithXxxRetry(maxAttempts, backoff)
+client := NewUserServiceClient(url, WithUserServiceRetry(3, 250*time.Millisecond))
+```
+```typescript
+// TS: retry on client options or per call
+const client = new UserServiceClient(url, { retry: { maxAttempts: 3, backoffMs: 250 } });
+```
+```python
+# Python: on ClientOptions
+client = UserServiceClient(url, UserServiceClientOptions(max_retry_attempts=3, retry_backoff=0.25))
+```
+
+**OpenAPI Security Schemes** - Header annotations with `auth_type` become `securitySchemes` (see `proto/onekit/http/headers.proto`): `AUTH_TYPE_API_KEY` → `apiKey`, `AUTH_TYPE_BEARER` → `http`/`bearer`, `AUTH_TYPE_BASIC` → `http`/`basic`. `auth_scheme_name` overrides the generated scheme name. Auth headers are removed from the plain `parameters` list.
+
 **Unwrap Annotation** - For map values that should serialize as arrays in JSON, or for root-level unwrapping:
 
 **Map-value unwrap** - Collapses wrapper when used as map value:
@@ -530,7 +569,7 @@ All custom annotations live in `proto/onekit/http/annotations.proto`:
 
 | Ext # | Name | Target | Purpose |
 |-------|------|--------|---------|
-| 50003 | config | MethodOptions | HTTP path, method, and SSE streaming flag |
+| 50003 | config | MethodOptions | HTTP path, method, SSE streaming flag, and body field selection |
 | 50004 | service_config | ServiceOptions | Service base path |
 | 50007 | field_examples | FieldOptions | Example values for docs |
 | 50008 | query | FieldOptions | Query parameter config |

@@ -253,6 +253,16 @@ func (g *Generator) generateService(gf *protogen.GeneratedFile, file *protogen.F
 			gf.P(`"`, httpMethod, `", config.marshalOpts,`)
 			gf.P(")")
 		} else {
+			// Resolve body field selection (body: "<field>" annotation)
+			bodyField, bodyErr := annotations.GetBodyField(method)
+			if bodyErr != nil {
+				return bodyErr
+			}
+			bodyFieldName := ""
+			if bodyField != nil {
+				bodyFieldName = string(bodyField.Desc.Name())
+			}
+
 			// Standard handler registration
 			gf.P(handlerName, " := BindingMiddleware[", method.Input.GoIdent, "](")
 			gf.P(
@@ -266,7 +276,7 @@ func (g *Generator) generateService(gf *protogen.GeneratedFile, file *protogen.F
 				annotations.LowerFirst(method.GoName),
 				"QueryParams,",
 			)
-			gf.P(`"`, httpMethod, `", config.errorHandler, config.marshalOpts,`)
+			gf.P(`"`, httpMethod, `", "`, bodyFieldName, `", config.errorHandler, config.marshalOpts,`)
 			gf.P(")")
 		}
 		gf.P()
@@ -378,9 +388,11 @@ func (g *Generator) generateBindingFile(file *protogen.File) error {
 	gf.P("// BindingMiddleware creates a middleware that binds HTTP requests to protobuf messages")
 	gf.P("// and validates them using protovalidate and header validation.")
 	gf.P("// It supports path parameters, query parameters, and request body binding.")
+	gf.P("// When bodyField is non-empty, the request body binds into that sub-message field")
+	gf.P("// instead of the whole request message (body field selection).")
 	gf.P("func BindingMiddleware[Req any](next http.Handler, serviceHeaders, methodHeaders []*onekithttp.Header,")
 	gf.P(
-		"pathParams []PathParamConfig, queryParams []QueryParamConfig, httpMethod string, errorHandler ErrorHandler, marshalOpts protojson.MarshalOptions) http.Handler {",
+		"pathParams []PathParamConfig, queryParams []QueryParamConfig, httpMethod string, bodyField string, errorHandler ErrorHandler, marshalOpts protojson.MarshalOptions) http.Handler {",
 	)
 	gf.P("return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {")
 	gf.P("// Validate headers first")
@@ -396,7 +408,12 @@ func (g *Generator) generateBindingFile(file *protogen.File) error {
 	gf.P("// calls proto.Reset(), which would wipe any previously-set fields.")
 	gf.P("// By binding body first, path and query params applied afterwards take precedence.")
 	gf.P(`if httpMethod == "POST" || httpMethod == "PUT" || httpMethod == "PATCH" {`)
-	gf.P("err := bindDataBasedOnContentType(r, toBind)")
+	gf.P("var err error")
+	gf.P(`if bodyField != "" {`)
+	gf.P("err = bindBodyToField(r, toBind, bodyField)")
+	gf.P("} else {")
+	gf.P("err = bindDataBasedOnContentType(r, toBind)")
+	gf.P("}")
 	gf.P("if err != nil {")
 	gf.P("// For binding errors, return a simple validation error")
 	gf.P("validationErr := &onekithttp.ValidationError{")
@@ -518,6 +535,48 @@ func (g *Generator) generateBindingFile(file *protogen.File) error {
 	gf.P("err = protojson.Unmarshal(bodyBytes, protoRequest)")
 	gf.P("if err != nil {")
 	gf.P(`return fmt.Errorf("could not unmarshal request JSON: %w", err)`)
+	gf.P("}")
+	gf.P("return nil")
+	gf.P("}")
+	gf.P()
+
+	// bindBodyToField function — body field selection (body: "<field>" annotation)
+	gf.P("// bindBodyToField unmarshals the request body into a single sub-message field of the")
+	gf.P("// request message instead of the whole message. Used when the HTTP config selects a")
+	gf.P(`// body field (body: "<field_name>"). Remaining fields bind from path/query params.`)
+	gf.P("func bindBodyToField[Req any](r *http.Request, toBind *Req, bodyField string) error {")
+	gf.P("bodyBytes, err := io.ReadAll(r.Body)")
+	gf.P("r.Body = io.NopCloser(bytes.NewReader(bodyBytes))")
+	gf.P("if err != nil {")
+	gf.P(`return fmt.Errorf("could not read request body: %w", err)`)
+	gf.P("}")
+	gf.P("if len(bodyBytes) == 0 {")
+	gf.P("return nil")
+	gf.P("}")
+	gf.P()
+	gf.P("parent, ok := any(toBind).(proto.Message)")
+	gf.P("if !ok {")
+	gf.P(`return errors.New("request is not a protocol buffer message")`)
+	gf.P("}")
+	gf.P("fd := parent.ProtoReflect().Descriptor().Fields().ByName(protoreflect.Name(bodyField))")
+	gf.P("if fd == nil || fd.Kind() != protoreflect.MessageKind || fd.IsList() || fd.IsMap() {")
+	gf.P(`return fmt.Errorf("body field %q is not a singular message field", bodyField)`)
+	gf.P("}")
+	gf.P("sub := parent.ProtoReflect().Mutable(fd).Message().Interface()")
+	gf.P()
+	gf.P(`switch filterFlags(r.Header.Get("Content-Type")) {`)
+	gf.P("case BinaryContentType, ProtoContentType:")
+	gf.P("if unmarshalErr := proto.Unmarshal(bodyBytes, sub); unmarshalErr != nil {")
+	gf.P(`return fmt.Errorf("could not unmarshal binary request body: %w", unmarshalErr)`)
+	gf.P("}")
+	gf.P("default:")
+	gf.P("// Check for custom JSON unmarshaler (unwrap support)")
+	gf.P("if unmarshaler, ok := any(sub).(json.Unmarshaler); ok {")
+	gf.P("return unmarshaler.UnmarshalJSON(bodyBytes)")
+	gf.P("}")
+	gf.P("if unmarshalErr := protojson.Unmarshal(bodyBytes, sub); unmarshalErr != nil {")
+	gf.P(`return fmt.Errorf("could not unmarshal request JSON: %w", unmarshalErr)`)
+	gf.P("}")
 	gf.P("}")
 	gf.P("return nil")
 	gf.P("}")

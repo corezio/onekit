@@ -27,7 +27,7 @@ func RegisterSSEServiceServer(server SSEServiceServer, opts ...ServerOption) err
 	getStatusHandler := BindingMiddleware[GetStatusRequest](
 		genericHandler(server.GetStatus, config.errorHandler, config.marshalOpts), serviceHeaders, methodHeaders,
 		getStatusPathParams, getStatusQueryParams,
-		"GET", config.errorHandler, config.marshalOpts,
+		"GET", "", config.errorHandler, config.marshalOpts,
 	)
 
 	config.mux.Handle("GET /api/v1/status", getStatusHandler)
