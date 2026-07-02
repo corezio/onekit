@@ -75,7 +75,7 @@ archives:
       - protoc-gen-onekit-py-client
       - protoc-gen-onekit-openapiv3
     name_template: >-
-      {{ .Binary }}_
+      onekit_plugins_
       {{- .Version }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}
