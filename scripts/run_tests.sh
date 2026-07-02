@@ -62,128 +62,6 @@ else
 fi
 echo
 
-# Function to check if a package has tests
-has_tests() {
-    local package=$1
-    local pattern
-    if [ "$package" = "." ]; then
-        pattern="*_test.go"
-    else
-        pattern="${package}/*_test.go"
-    fi
-    
-    # Use find to check for test files, which doesn't fail with set -e
-    [ "$(find "$package" -name "*_test.go" -type f 2>/dev/null | wc -l)" -gt 0 ]
-}
-
-# Function to run tests and get coverage for a package
-run_package_tests() {
-    local package=$1
-    local package_name=$2
-    local root_module=$3
-    
-    echo -e "${BLUE}Testing package: ${package_name}${NC}"
-    
-    # Convert package path to relative path for file system operations
-    local relative_path=""
-    if [ "$package" = "$root_module" ]; then
-        relative_path="."
-    else
-        relative_path=${package#$root_module/}
-    fi
-    
-    if has_tests "$relative_path"; then
-        # Package has tests, continue with testing
-        if [ "$FAST_MODE" = true ]; then
-            # Fast mode: run tests without coverage
-            local test_cmd="TESTING_MODE=true go test"
-            if [ "$VERBOSE" = true ]; then
-                test_cmd="$test_cmd -v"
-            fi
-            test_cmd="$test_cmd \"$package\""
-            
-            if eval $test_cmd; then
-                echo -e "${GREEN}  OK:  Tests passed${NC}"
-                return 0
-            else
-                echo -e "${RED}  FAIL:  Tests failed${NC}"
-                return 1
-            fi
-        else
-            # Coverage mode: run tests with coverage analysis and race detection
-            local temp_profile="$COVERAGE_DIR/${package_name//\//_}.out"
-            
-            # Build go test command with coverage, race detection, and optional verbose flag
-            local test_cmd="TESTING_MODE=true go test -race -coverprofile=\"$temp_profile\" -covermode=atomic"
-            if [ "$VERBOSE" = true ]; then
-                test_cmd="$test_cmd -v"
-            fi
-            test_cmd="$test_cmd \"$package\""
-            
-            if eval $test_cmd; then
-                if [ -f "$temp_profile" ]; then
-                    # Extract coverage percentage
-                    local coverage=$(go tool cover -func="$temp_profile" | grep "total:" | awk '{print $3}' | sed 's/%//')
-                    
-                    if [ -n "$coverage" ]; then
-                        # Check if coverage meets threshold
-                        if (( $(echo "$coverage" | cut -d. -f1) >= $COVERAGE_THRESHOLD )); then
-                            echo -e "${GREEN}  OK:  Coverage: ${coverage}% (Above threshold: ${COVERAGE_THRESHOLD}%)${NC}"
-                            echo "$temp_profile" >> "$COVERAGE_DIR/profiles.list"
-                            return 0
-                        else
-                            echo -e "${YELLOW}  WARN:  Coverage: ${coverage}% (Below threshold: ${COVERAGE_THRESHOLD}%)${NC}"
-                            echo "$temp_profile" >> "$COVERAGE_DIR/profiles.list"
-                            return 0  # Don't fail, just report
-                        fi
-                    else
-                        echo -e "${RED}  FAIL:  Could not determine coverage${NC}"
-                        return 1
-                    fi
-                else
-                    echo -e "${RED}  FAIL:  No coverage profile generated${NC}"
-                    return 1
-                fi
-            else
-                echo -e "${RED}  FAIL:  Tests failed${NC}"
-                return 1
-            fi
-        fi
-    else
-        # Package has no tests - this is OK for some packages like cmd/, proto definitions, etc.
-        echo -e "${YELLOW}  WARN:  No tests found for package ${package_name}${NC}"
-        if [ "$FAST_MODE" = true ]; then
-            echo -e "${YELLOW}  WARN:  No tests to run (skipped)${NC}"
-        else
-            echo -e "${YELLOW}  WARN:  Coverage: 0.0% (no tests, skipped)${NC}"
-        fi
-        return 0  # Don't fail for packages without tests
-    fi
-}
-
-# Function to merge coverage profiles
-merge_coverage_profiles() {
-    if [ -f "$COVERAGE_DIR/profiles.list" ]; then
-        echo -e "${BLUE}Merging coverage profiles...${NC}"
-        echo "mode: atomic" > "$COVERAGE_PROFILE"
-        
-        # Merge all profiles, skipping the mode line
-        while IFS= read -r profile; do
-            if [ -f "$profile" ]; then
-                tail -n +2 "$profile" >> "$COVERAGE_PROFILE"
-            fi
-        done < "$COVERAGE_DIR/profiles.list"
-        
-        # Clean up individual profiles
-        while IFS= read -r profile; do
-            rm -f "$profile"
-        done < "$COVERAGE_DIR/profiles.list"
-        rm -f "$COVERAGE_DIR/profiles.list"
-        
-        echo -e "${GREEN}Coverage profiles merged successfully${NC}"
-    fi
-}
-
 # Function to generate HTML coverage report
 generate_html_report() {
     if [ -f "$COVERAGE_PROFILE" ]; then
@@ -294,40 +172,31 @@ main() {
     # Clean up previous coverage data
     rm -f "$COVERAGE_DIR"/*.out "$COVERAGE_DIR"/*.html "$COVERAGE_DIR"/*.json "$COVERAGE_DIR"/profiles.list
     
-    # Get all packages and root module, excluding cmd packages (entry points)
+    # Get all packages, excluding cmd packages (entry points). Run them as a
+    # single go test invocation so Go can schedule packages in parallel.
     packages=$(go list ./... | grep -v '/cmd/')
-    root_module=$(go list -m)
-    
-    
-    local failed_packages=()
-    local total_packages=0
-    
-    for package in $packages; do
-        total_packages=$((total_packages + 1))
-        
-        
-        # Convert package path to relative path for file system operations
-        local relative_path=""
-        if [ "$package" = "$root_module" ]; then
-            relative_path="."
-            # Get the actual package name from go.mod or use the directory name
-            package_name=$(go list -f '{{.Name}}' . 2>/dev/null || basename "$(pwd)")
-        else
-            relative_path=${package#$root_module/}
-            package_name=${relative_path}
+
+    local test_args=()
+    if [ "$VERBOSE" = true ]; then
+        test_args+=("-v")
+    fi
+
+    if [ "$FAST_MODE" = true ]; then
+        echo -e "${BLUE}Running fast tests across all packages...${NC}"
+        if ! TESTING_MODE=true go test "${test_args[@]}" $packages; then
+            echo -e "${RED}FAIL: Tests failed${NC}"
+            exit 1
         fi
-        
-        
-        if ! run_package_tests "$package" "$package_name" "$root_module"; then
-            failed_packages+=("$package_name")
+    else
+        echo -e "${BLUE}Running race-enabled coverage tests across all packages...${NC}"
+        if ! TESTING_MODE=true go test -race -coverprofile="$COVERAGE_PROFILE" -covermode=atomic "${test_args[@]}" $packages; then
+            echo -e "${RED}FAIL: Tests failed${NC}"
+            exit 1
         fi
-        echo
-    done
-    
-    # Generate reports only in coverage mode
+    fi
+
+    # Generate reports only in coverage mode.
     if [ "$FAST_MODE" = false ]; then
-        # Merge coverage profiles and generate reports
-        merge_coverage_profiles
         generate_html_report
         generate_json_report
         generate_coverage_badge
@@ -339,36 +208,14 @@ main() {
     echo -e "${BLUE}          Final Results                    ${NC}"
     echo -e "${BLUE}===========================================${NC}"
     
-    local passed_packages=$((total_packages - ${#failed_packages[@]}))
+    local total_packages
+    total_packages=$(echo "$packages" | wc -w | tr -d ' ')
     echo -e "${BLUE}Total packages: $total_packages${NC}"
-    echo -e "${GREEN}Passed threshold: $passed_packages${NC}"
-    echo -e "${RED}Failed threshold: ${#failed_packages[@]}${NC}"
     
     if [ "$FAST_MODE" = true ]; then
-        # Fast mode: fail only on actual test failures
-        if [ ${#failed_packages[@]} -eq 0 ]; then
-            echo -e "${GREEN}All tests passed!${NC}"
-            exit 0
-        else
-            echo -e "${RED}FAIL: The following packages had test failures:${NC}"
-            for package in "${failed_packages[@]}"; do
-                echo -e "${RED}  - $package${NC}"
-            done
-            echo
-            echo -e "${YELLOW}Tip: Fix the failing tests in the above packages.${NC}"
-            exit 1
-        fi
+        echo -e "${GREEN}All tests passed!${NC}"
+        exit 0
     else
-        if [ ${#failed_packages[@]} -gt 0 ]; then
-            echo -e "${RED}FAIL: The following packages had test failures:${NC}"
-            for package in "${failed_packages[@]}"; do
-                echo -e "${RED}  - $package${NC}"
-            done
-            echo
-            echo -e "${YELLOW}Tip: Fix the failing tests in the above packages.${NC}"
-            exit 1
-        fi
-
         echo -e "${GREEN}OK: All tests passed! Coverage analysis complete.${NC}"
         exit 0
     fi
