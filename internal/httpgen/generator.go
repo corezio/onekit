@@ -280,7 +280,10 @@ func (g *Generator) generateService(gf *protogen.GeneratedFile, file *protogen.F
 				annotations.LowerFirst(method.GoName),
 				"QueryParams,",
 			)
-			gf.P(`"`, httpMethod, `", "`, bodyFieldName, `", config.maxRequestBytes, config.errorHandler, config.marshalOpts,`)
+			gf.P(
+				`"`, httpMethod, `", "`, bodyFieldName,
+				`", config.maxRequestBytes, config.errorHandler, config.marshalOpts,`,
+			)
 			gf.P(")")
 		}
 		gf.P()

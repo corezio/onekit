@@ -359,6 +359,8 @@ func (g *Generator) getMockScalarValueExpr(
 		return `[]byte(selectStringExample("` + fieldPath + `", generateString))`
 	case protoreflect.EnumKind:
 		return gf.QualifiedGoIdent(field.Enum.GoIdent) + `(selectIntExample("` + fieldPath + `", 0))`
+	case protoreflect.MessageKind, protoreflect.GroupKind:
+		return `nil`
 	default:
 		return `nil`
 	}
@@ -367,7 +369,8 @@ func (g *Generator) getMockScalarValueExpr(
 func (g *Generator) getMockReflectValueExpr(field *protogen.Field, fieldPath string) string {
 	switch field.Desc.Kind() {
 	case protoreflect.StringKind:
-		return `protoreflect.ValueOfString(selectStringExample("` + fieldPath + `", ` + g.getDefaultGenerator(field) + `))`
+		return `protoreflect.ValueOfString(` +
+			`selectStringExample("` + fieldPath + `", ` + g.getDefaultGenerator(field) + `))`
 	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind:
 		return `protoreflect.ValueOfInt32(int32(selectIntExample("` + fieldPath + `", 42)))`
 	case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
@@ -386,6 +389,8 @@ func (g *Generator) getMockReflectValueExpr(field *protogen.Field, fieldPath str
 		return `protoreflect.ValueOfBytes([]byte(selectStringExample("` + fieldPath + `", generateString)))`
 	case protoreflect.EnumKind:
 		return `protoreflect.ValueOfEnum(protoreflect.EnumNumber(selectIntExample("` + fieldPath + `", 0)))`
+	case protoreflect.MessageKind, protoreflect.GroupKind:
+		return `protoreflect.Value{}`
 	default:
 		return `protoreflect.Value{}`
 	}
@@ -439,38 +444,11 @@ func (g *Generator) getDefaultGenerator(field *protogen.Field) string {
 	}
 }
 
-// getDefaultValue returns a default value for a field.
-func (g *Generator) getDefaultValue(field *protogen.Field) string {
-	switch field.Desc.Kind() {
-	case protoreflect.Int32Kind, protoreflect.Int64Kind:
-		return "42"
-	case protoreflect.BoolKind:
-		return "true"
-	case protoreflect.FloatKind, protoreflect.DoubleKind:
-		return "3.14"
-	case protoreflect.EnumKind,
-		protoreflect.Sint32Kind,
-		protoreflect.Uint32Kind,
-		protoreflect.Sint64Kind,
-		protoreflect.Uint64Kind,
-		protoreflect.Sfixed32Kind,
-		protoreflect.Fixed32Kind,
-		protoreflect.Sfixed64Kind,
-		protoreflect.Fixed64Kind,
-		protoreflect.StringKind,
-		protoreflect.BytesKind,
-		protoreflect.MessageKind,
-		protoreflect.GroupKind:
-		return `""`
-	default:
-		return `""`
-	}
-}
-
 // generateMockHelpers generates helper functions for mock data generation.
 func (g *Generator) generateMockHelpers(gf *protogen.GeneratedFile) {
 	g.generateSetMockFieldHelper(gf)
 	g.generateExampleSelectors(gf)
+	g.generateUintExampleSelector(gf)
 	g.generateDefaultGenerators(gf)
 	g.generateInitFunction(gf)
 }
@@ -512,19 +490,6 @@ func (g *Generator) generateExampleSelectors(gf *protogen.GeneratedFile) {
 	gf.P("}")
 	gf.P()
 
-	// Uint example selector
-	gf.P("// selectUintExample selects a random example or returns a default value.")
-	gf.P("func selectUintExample(fieldPath string, defaultValue uint64) uint64 {")
-	gf.P("if examples, ok := fieldExamples[fieldPath]; ok && len(examples) > 0 {")
-	gf.P("example := examples[rand.Intn(len(examples))]")
-	gf.P("if v, err := strconv.ParseUint(example, 10, 64); err == nil {")
-	gf.P("return v")
-	gf.P("}")
-	gf.P("}")
-	gf.P("return defaultValue")
-	gf.P("}")
-	gf.P()
-
 	// Bool example selector
 	gf.P("// selectBoolExample selects a random example or returns a default value.")
 	gf.P("func selectBoolExample(fieldPath string, defaultValue bool) bool {")
@@ -544,6 +509,20 @@ func (g *Generator) generateExampleSelectors(gf *protogen.GeneratedFile) {
 	gf.P("if examples, ok := fieldExamples[fieldPath]; ok && len(examples) > 0 {")
 	gf.P("example := examples[rand.Intn(len(examples))]")
 	gf.P("if v, err := strconv.ParseFloat(example, 64); err == nil {")
+	gf.P("return v")
+	gf.P("}")
+	gf.P("}")
+	gf.P("return defaultValue")
+	gf.P("}")
+	gf.P()
+}
+
+func (g *Generator) generateUintExampleSelector(gf *protogen.GeneratedFile) {
+	gf.P("// selectUintExample selects a random example or returns a default value.")
+	gf.P("func selectUintExample(fieldPath string, defaultValue uint64) uint64 {")
+	gf.P("if examples, ok := fieldExamples[fieldPath]; ok && len(examples) > 0 {")
+	gf.P("example := examples[rand.Intn(len(examples))]")
+	gf.P("if v, err := strconv.ParseUint(example, 10, 64); err == nil {")
 	gf.P("return v")
 	gf.P("}")
 	gf.P("}")
