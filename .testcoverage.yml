@@ -11,7 +11,7 @@ threshold:
   total: 85
 
 # Local prefix for coverage calculation
-localPrefix: "github.com/stackxio/onekit"
+localPrefix: "github.com/corezio/onekit"
 
 # Files and packages to exclude from coverage analysis
 exclude:
@@ -26,10 +26,10 @@ exclude:
     - ".*/fixtures/.*"          # Fixture files
   
   packages:
-    - "github.com/stackxio/onekit/cmd/.*"       # Command entry points
-    - "github.com/stackxio/onekit/vendor/.*"    # Vendor directory
-    - "github.com/stackxio/onekit/examples/.*"  # Examples
-    - "github.com/stackxio/onekit/docs/.*"      # Documentation
+    - "github.com/corezio/onekit/cmd/.*"       # Command entry points
+    - "github.com/corezio/onekit/vendor/.*"    # Vendor directory
+    - "github.com/corezio/onekit/examples/.*"  # Examples
+    - "github.com/corezio/onekit/docs/.*"      # Documentation
 
 # Coverage calculation settings
 coverageMode: "atomic"
