@@ -114,7 +114,7 @@ func TestErrorHandlerConfigGeneration(t *testing.T) {
 	t.Run("serverConfiguration has max request size field", func(t *testing.T) {
 		for _, want := range []string{
 			"const DefaultMaxRequestBytes int64 = 10 << 20",
-			"maxRequestBytes int64",
+			"maxRequestBytes",
 			"maxRequestBytes: DefaultMaxRequestBytes",
 		} {
 			if !strings.Contains(files.config, want) {
@@ -149,6 +149,46 @@ func TestErrorHandlerConfigGeneration(t *testing.T) {
 			t.Error("proto import not found")
 		}
 	})
+}
+
+func TestMiddlewareAndRequestIDGeneration(t *testing.T) {
+	files := generateTestFiles(t, "http_verbs_comprehensive.proto")
+
+	for _, want := range []string{
+		"type Middleware func(http.Handler) http.Handler",
+		"type RequestIDGenerator func() string",
+		"func RequestIDFromContext(ctx context.Context) (string, bool)",
+		"func WithMiddleware(middleware ...Middleware) ServerOption",
+		"func WithRequestID(headerName string) ServerOption",
+		"func WithRequestIDGenerator(headerName string, generate RequestIDGenerator) ServerOption",
+		"type RequestObserver interface",
+		"func RequestMetadataFromContext(ctx context.Context) (RequestMetadata, bool)",
+		"func WithRequestObserver(observer RequestObserver) ServerOption",
+		"handler = observationMiddleware(c.observer, metadata)(handler)",
+		"observer.RequestFinished(ctx, metadata, RequestResult{",
+		"handler = requestIDMiddleware(c.requestIDHeader, c.requestIDGenerator)(handler)",
+		"for i := len(c.middlewares) - 1; i >= 0; i--",
+		"w.Header().Set(headerName, requestID)",
+		"context.WithValue(r.Context(), requestIDContextKey{}, requestID)",
+	} {
+		if !strings.Contains(files.config, want) {
+			t.Errorf("middleware/request-ID generation missing %q", want)
+		}
+	}
+
+	if count := strings.Count(files.http, "= config.wrapHandler("); count == 0 {
+		t.Error("registered service handlers should be wrapped by the configured middleware")
+	}
+	for _, want := range []string{
+		`Service:     "test.httpgen.RESTfulAPIService"`,
+		`Procedure:   "test.httpgen.RESTfulAPIService.GetResource"`,
+		`HTTPMethod:  "GET"`,
+		`PathPattern: "/api/v1/resources/{resource_id}"`,
+	} {
+		if !strings.Contains(files.http, want) {
+			t.Errorf("generated route metadata missing %q", want)
+		}
+	}
 }
 
 // TestErrorHandlerDocumentation tests that documentation is generated correctly.

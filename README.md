@@ -125,6 +125,27 @@ user, err := client.CreateUser(ctx, &api.CreateUserRequest{
 })
 ```
 
+Generated Go servers also accept transport-wide middleware and request-ID
+propagation without coupling the generated package to a logging or tracing SDK:
+
+```go
+api.RegisterUserServiceServer(
+    userService,
+    api.WithMux(mux),
+    api.WithRequestID("X-Request-ID"),
+    api.WithMiddleware(tracingMiddleware, loggingMiddleware),
+    api.WithRequestObserver(observer),
+)
+```
+
+Middleware is applied in declaration order, with the first middleware outermost.
+Handlers and error handlers can retrieve the propagated ID with
+`api.RequestIDFromContext(r.Context())`. `WithRequestIDGenerator` can bridge IDs
+from an existing tracing or identity system. `WithRequestObserver` reports the
+protobuf service, RPC, HTTP route pattern, status code, response size, and
+duration without requiring a particular telemetry SDK. Route metadata is also
+available to middleware through `api.RequestMetadataFromContext`.
+
 ```ts
 const client = new UserServiceClient("https://api.example.com", {
   apiKey,

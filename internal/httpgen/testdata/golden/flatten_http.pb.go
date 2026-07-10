@@ -30,6 +30,13 @@ func RegisterFlattenServiceServer(server FlattenServiceServer, opts ...ServerOpt
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	testSimpleFlattenHandler = config.wrapHandler(testSimpleFlattenHandler, RequestMetadata{
+		Service:     "testdata.flatten.FlattenService",
+		Method:      "TestSimpleFlatten",
+		Procedure:   "testdata.flatten.FlattenService.TestSimpleFlatten",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v1/flatten/simple",
+	})
 	config.mux.Handle("POST /api/v1/flatten/simple", testSimpleFlattenHandler)
 
 	methodHeaders = getTestDualFlattenHeaders()
@@ -39,6 +46,13 @@ func RegisterFlattenServiceServer(server FlattenServiceServer, opts ...ServerOpt
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	testDualFlattenHandler = config.wrapHandler(testDualFlattenHandler, RequestMetadata{
+		Service:     "testdata.flatten.FlattenService",
+		Method:      "TestDualFlatten",
+		Procedure:   "testdata.flatten.FlattenService.TestDualFlatten",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v1/flatten/dual",
+	})
 	config.mux.Handle("POST /api/v1/flatten/dual", testDualFlattenHandler)
 
 	methodHeaders = getTestMixedFlattenHeaders()
@@ -48,6 +62,13 @@ func RegisterFlattenServiceServer(server FlattenServiceServer, opts ...ServerOpt
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	testMixedFlattenHandler = config.wrapHandler(testMixedFlattenHandler, RequestMetadata{
+		Service:     "testdata.flatten.FlattenService",
+		Method:      "TestMixedFlatten",
+		Procedure:   "testdata.flatten.FlattenService.TestMixedFlatten",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v1/flatten/mixed",
+	})
 	config.mux.Handle("POST /api/v1/flatten/mixed", testMixedFlattenHandler)
 
 	methodHeaders = getTestPlainNestedHeaders()
@@ -57,6 +78,13 @@ func RegisterFlattenServiceServer(server FlattenServiceServer, opts ...ServerOpt
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	testPlainNestedHandler = config.wrapHandler(testPlainNestedHandler, RequestMetadata{
+		Service:     "testdata.flatten.FlattenService",
+		Method:      "TestPlainNested",
+		Procedure:   "testdata.flatten.FlattenService.TestPlainNested",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v1/flatten/plain",
+	})
 	config.mux.Handle("POST /api/v1/flatten/plain", testPlainNestedHandler)
 
 	return nil

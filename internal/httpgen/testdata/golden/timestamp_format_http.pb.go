@@ -28,6 +28,13 @@ func RegisterTimestampFormatServiceServer(server TimestampFormatServiceServer, o
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	createTimestampFormatHandler = config.wrapHandler(createTimestampFormatHandler, RequestMetadata{
+		Service:     "testdata.timestamp_format.TimestampFormatService",
+		Method:      "CreateTimestampFormat",
+		Procedure:   "testdata.timestamp_format.TimestampFormatService.CreateTimestampFormat",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v1/timestamp-format",
+	})
 	config.mux.Handle("POST /api/v1/timestamp-format", createTimestampFormatHandler)
 
 	methodHeaders = getGetTimestampFormatHeaders()
@@ -37,6 +44,13 @@ func RegisterTimestampFormatServiceServer(server TimestampFormatServiceServer, o
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getTimestampFormatHandler = config.wrapHandler(getTimestampFormatHandler, RequestMetadata{
+		Service:     "testdata.timestamp_format.TimestampFormatService",
+		Method:      "GetTimestampFormat",
+		Procedure:   "testdata.timestamp_format.TimestampFormatService.GetTimestampFormat",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/timestamp-format/{id}",
+	})
 	config.mux.Handle("GET /api/v1/timestamp-format/{id}", getTimestampFormatHandler)
 
 	return nil

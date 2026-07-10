@@ -30,6 +30,13 @@ func RegisterSSEServiceServer(server SSEServiceServer, opts ...ServerOption) err
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getStatusHandler = config.wrapHandler(getStatusHandler, RequestMetadata{
+		Service:     "test.sse.SSEService",
+		Method:      "GetStatus",
+		Procedure:   "test.sse.SSEService.GetStatus",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/status",
+	})
 	config.mux.Handle("GET /api/v1/status", getStatusHandler)
 
 	methodHeaders = getStreamEventsHeaders()
@@ -39,6 +46,13 @@ func RegisterSSEServiceServer(server SSEServiceServer, opts ...ServerOption) err
 		"GET", config.maxRequestBytes, config.marshalOpts,
 	)
 
+	streamEventsHandler = config.wrapHandler(streamEventsHandler, RequestMetadata{
+		Service:     "test.sse.SSEService",
+		Method:      "StreamEvents",
+		Procedure:   "test.sse.SSEService.StreamEvents",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/events",
+	})
 	config.mux.Handle("GET /api/v1/events", streamEventsHandler)
 
 	methodHeaders = getStreamResourceEventsHeaders()
@@ -48,6 +62,13 @@ func RegisterSSEServiceServer(server SSEServiceServer, opts ...ServerOption) err
 		"GET", config.maxRequestBytes, config.marshalOpts,
 	)
 
+	streamResourceEventsHandler = config.wrapHandler(streamResourceEventsHandler, RequestMetadata{
+		Service:     "test.sse.SSEService",
+		Method:      "StreamResourceEvents",
+		Procedure:   "test.sse.SSEService.StreamResourceEvents",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/resources/{resource_id}/events",
+	})
 	config.mux.Handle("GET /api/v1/resources/{resource_id}/events", streamResourceEventsHandler)
 
 	methodHeaders = getStreamFilteredEventsHeaders()
@@ -57,6 +78,13 @@ func RegisterSSEServiceServer(server SSEServiceServer, opts ...ServerOption) err
 		"GET", config.maxRequestBytes, config.marshalOpts,
 	)
 
+	streamFilteredEventsHandler = config.wrapHandler(streamFilteredEventsHandler, RequestMetadata{
+		Service:     "test.sse.SSEService",
+		Method:      "StreamFilteredEvents",
+		Procedure:   "test.sse.SSEService.StreamFilteredEvents",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/events/filtered",
+	})
 	config.mux.Handle("GET /api/v1/events/filtered", streamFilteredEventsHandler)
 
 	return nil

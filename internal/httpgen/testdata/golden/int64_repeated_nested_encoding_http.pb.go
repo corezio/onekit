@@ -27,6 +27,13 @@ func RegisterStockServiceServer(server StockServiceServer, opts ...ServerOption)
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getStocksHandler = config.wrapHandler(getStocksHandler, RequestMetadata{
+		Service:     "testdata.int64repeatednested.StockService",
+		Method:      "GetStocks",
+		Procedure:   "testdata.int64repeatednested.StockService.GetStocks",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/stocks/{market}",
+	})
 	config.mux.Handle("GET /api/v1/stocks/{market}", getStocksHandler)
 
 	return nil

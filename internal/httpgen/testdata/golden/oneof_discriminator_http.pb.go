@@ -29,6 +29,13 @@ func RegisterOneofDiscriminatorServiceServer(server OneofDiscriminatorServiceSer
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	testFlattenedEventHandler = config.wrapHandler(testFlattenedEventHandler, RequestMetadata{
+		Service:     "testdata.oneof_discriminator.OneofDiscriminatorService",
+		Method:      "TestFlattenedEvent",
+		Procedure:   "testdata.oneof_discriminator.OneofDiscriminatorService.TestFlattenedEvent",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v1/events/flattened",
+	})
 	config.mux.Handle("POST /api/v1/events/flattened", testFlattenedEventHandler)
 
 	methodHeaders = getTestNestedEventHeaders()
@@ -38,6 +45,13 @@ func RegisterOneofDiscriminatorServiceServer(server OneofDiscriminatorServiceSer
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	testNestedEventHandler = config.wrapHandler(testNestedEventHandler, RequestMetadata{
+		Service:     "testdata.oneof_discriminator.OneofDiscriminatorService",
+		Method:      "TestNestedEvent",
+		Procedure:   "testdata.oneof_discriminator.OneofDiscriminatorService.TestNestedEvent",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v1/events/nested",
+	})
 	config.mux.Handle("POST /api/v1/events/nested", testNestedEventHandler)
 
 	methodHeaders = getTestPlainEventHeaders()
@@ -47,6 +61,13 @@ func RegisterOneofDiscriminatorServiceServer(server OneofDiscriminatorServiceSer
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	testPlainEventHandler = config.wrapHandler(testPlainEventHandler, RequestMetadata{
+		Service:     "testdata.oneof_discriminator.OneofDiscriminatorService",
+		Method:      "TestPlainEvent",
+		Procedure:   "testdata.oneof_discriminator.OneofDiscriminatorService.TestPlainEvent",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v1/events/plain",
+	})
 	config.mux.Handle("POST /api/v1/events/plain", testPlainEventHandler)
 
 	return nil

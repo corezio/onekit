@@ -28,6 +28,13 @@ func RegisterEmptyRequestBodyServiceServer(server EmptyRequestBodyServiceServer,
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	pingHandler = config.wrapHandler(pingHandler, RequestMetadata{
+		Service:     "testdata.empty_request_body.EmptyRequestBodyService",
+		Method:      "Ping",
+		Procedure:   "testdata.empty_request_body.EmptyRequestBodyService.Ping",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v1/ping",
+	})
 	config.mux.Handle("POST /api/v1/ping", pingHandler)
 
 	methodHeaders = getNoArgsHeaders()
@@ -37,6 +44,13 @@ func RegisterEmptyRequestBodyServiceServer(server EmptyRequestBodyServiceServer,
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	noArgsHandler = config.wrapHandler(noArgsHandler, RequestMetadata{
+		Service:     "testdata.empty_request_body.EmptyRequestBodyService",
+		Method:      "NoArgs",
+		Procedure:   "testdata.empty_request_body.EmptyRequestBodyService.NoArgs",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/no-args",
+	})
 	config.mux.Handle("GET /api/v1/no-args", noArgsHandler)
 
 	return nil

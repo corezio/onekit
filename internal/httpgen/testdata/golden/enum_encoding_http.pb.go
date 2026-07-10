@@ -27,6 +27,13 @@ func RegisterEnumEncodingServiceServer(server EnumEncodingServiceServer, opts ..
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getEnumTestHandler = config.wrapHandler(getEnumTestHandler, RequestMetadata{
+		Service:     "testdata.enumencoding.EnumEncodingService",
+		Method:      "GetEnumTest",
+		Procedure:   "testdata.enumencoding.EnumEncodingService.GetEnumTest",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/test/enum/{id}",
+	})
 	config.mux.Handle("GET /api/v1/test/enum/{id}", getEnumTestHandler)
 
 	return nil

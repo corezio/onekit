@@ -28,6 +28,13 @@ func RegisterSensorServiceServer(server SensorServiceServer, opts ...ServerOptio
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getSensorReadingHandler = config.wrapHandler(getSensorReadingHandler, RequestMetadata{
+		Service:     "testdata.int64nestedencoding.SensorService",
+		Method:      "GetSensorReading",
+		Procedure:   "testdata.int64nestedencoding.SensorService.GetSensorReading",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/sensors/{sensor_id}",
+	})
 	config.mux.Handle("GET /api/v1/sensors/{sensor_id}", getSensorReadingHandler)
 
 	methodHeaders = getGetMultiSensorHeaders()
@@ -37,6 +44,13 @@ func RegisterSensorServiceServer(server SensorServiceServer, opts ...ServerOptio
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getMultiSensorHandler = config.wrapHandler(getMultiSensorHandler, RequestMetadata{
+		Service:     "testdata.int64nestedencoding.SensorService",
+		Method:      "GetMultiSensor",
+		Procedure:   "testdata.int64nestedencoding.SensorService.GetMultiSensor",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/sensors/{sensor_id}/multi",
+	})
 	config.mux.Handle("GET /api/v1/sensors/{sensor_id}/multi", getMultiSensorHandler)
 
 	return nil

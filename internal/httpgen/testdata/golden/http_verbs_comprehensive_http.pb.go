@@ -35,6 +35,13 @@ func RegisterRESTfulAPIServiceServer(server RESTfulAPIServiceServer, opts ...Ser
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	listResourcesHandler = config.wrapHandler(listResourcesHandler, RequestMetadata{
+		Service:     "test.httpgen.RESTfulAPIService",
+		Method:      "ListResources",
+		Procedure:   "test.httpgen.RESTfulAPIService.ListResources",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/resources",
+	})
 	config.mux.Handle("GET /api/v1/resources", listResourcesHandler)
 
 	methodHeaders = getGetResourceHeaders()
@@ -44,6 +51,13 @@ func RegisterRESTfulAPIServiceServer(server RESTfulAPIServiceServer, opts ...Ser
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getResourceHandler = config.wrapHandler(getResourceHandler, RequestMetadata{
+		Service:     "test.httpgen.RESTfulAPIService",
+		Method:      "GetResource",
+		Procedure:   "test.httpgen.RESTfulAPIService.GetResource",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/resources/{resource_id}",
+	})
 	config.mux.Handle("GET /api/v1/resources/{resource_id}", getResourceHandler)
 
 	methodHeaders = getGetNestedResourceHeaders()
@@ -53,6 +67,13 @@ func RegisterRESTfulAPIServiceServer(server RESTfulAPIServiceServer, opts ...Ser
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getNestedResourceHandler = config.wrapHandler(getNestedResourceHandler, RequestMetadata{
+		Service:     "test.httpgen.RESTfulAPIService",
+		Method:      "GetNestedResource",
+		Procedure:   "test.httpgen.RESTfulAPIService.GetNestedResource",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/orgs/{org_id}/teams/{team_id}/resources/{resource_id}",
+	})
 	config.mux.Handle("GET /api/v1/orgs/{org_id}/teams/{team_id}/resources/{resource_id}", getNestedResourceHandler)
 
 	methodHeaders = getCreateResourceHeaders()
@@ -62,6 +83,13 @@ func RegisterRESTfulAPIServiceServer(server RESTfulAPIServiceServer, opts ...Ser
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	createResourceHandler = config.wrapHandler(createResourceHandler, RequestMetadata{
+		Service:     "test.httpgen.RESTfulAPIService",
+		Method:      "CreateResource",
+		Procedure:   "test.httpgen.RESTfulAPIService.CreateResource",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v1/resources",
+	})
 	config.mux.Handle("POST /api/v1/resources", createResourceHandler)
 
 	methodHeaders = getUpdateResourceHeaders()
@@ -71,6 +99,13 @@ func RegisterRESTfulAPIServiceServer(server RESTfulAPIServiceServer, opts ...Ser
 		"PUT", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	updateResourceHandler = config.wrapHandler(updateResourceHandler, RequestMetadata{
+		Service:     "test.httpgen.RESTfulAPIService",
+		Method:      "UpdateResource",
+		Procedure:   "test.httpgen.RESTfulAPIService.UpdateResource",
+		HTTPMethod:  "PUT",
+		PathPattern: "/api/v1/resources/{resource_id}",
+	})
 	config.mux.Handle("PUT /api/v1/resources/{resource_id}", updateResourceHandler)
 
 	methodHeaders = getPatchResourceHeaders()
@@ -80,6 +115,13 @@ func RegisterRESTfulAPIServiceServer(server RESTfulAPIServiceServer, opts ...Ser
 		"PATCH", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	patchResourceHandler = config.wrapHandler(patchResourceHandler, RequestMetadata{
+		Service:     "test.httpgen.RESTfulAPIService",
+		Method:      "PatchResource",
+		Procedure:   "test.httpgen.RESTfulAPIService.PatchResource",
+		HTTPMethod:  "PATCH",
+		PathPattern: "/api/v1/resources/{resource_id}",
+	})
 	config.mux.Handle("PATCH /api/v1/resources/{resource_id}", patchResourceHandler)
 
 	methodHeaders = getDeleteResourceHeaders()
@@ -89,6 +131,13 @@ func RegisterRESTfulAPIServiceServer(server RESTfulAPIServiceServer, opts ...Ser
 		"DELETE", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	deleteResourceHandler = config.wrapHandler(deleteResourceHandler, RequestMetadata{
+		Service:     "test.httpgen.RESTfulAPIService",
+		Method:      "DeleteResource",
+		Procedure:   "test.httpgen.RESTfulAPIService.DeleteResource",
+		HTTPMethod:  "DELETE",
+		PathPattern: "/api/v1/resources/{resource_id}",
+	})
 	config.mux.Handle("DELETE /api/v1/resources/{resource_id}", deleteResourceHandler)
 
 	methodHeaders = getDefaultPostMethodHeaders()
@@ -98,6 +147,13 @@ func RegisterRESTfulAPIServiceServer(server RESTfulAPIServiceServer, opts ...Ser
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	defaultPostMethodHandler = config.wrapHandler(defaultPostMethodHandler, RequestMetadata{
+		Service:     "test.httpgen.RESTfulAPIService",
+		Method:      "DefaultPostMethod",
+		Procedure:   "test.httpgen.RESTfulAPIService.DefaultPostMethod",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v1/legacy/action",
+	})
 	config.mux.Handle("POST /api/v1/legacy/action", defaultPostMethodHandler)
 
 	methodHeaders = getSearchResourcesHeaders()
@@ -107,6 +163,13 @@ func RegisterRESTfulAPIServiceServer(server RESTfulAPIServiceServer, opts ...Ser
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	searchResourcesHandler = config.wrapHandler(searchResourcesHandler, RequestMetadata{
+		Service:     "test.httpgen.RESTfulAPIService",
+		Method:      "SearchResources",
+		Procedure:   "test.httpgen.RESTfulAPIService.SearchResources",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/resources/search",
+	})
 	config.mux.Handle("GET /api/v1/resources/search", searchResourcesHandler)
 
 	return nil
@@ -278,6 +341,13 @@ func RegisterBackwardCompatServiceServer(server BackwardCompatServiceServer, opt
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	legacyActionHandler = config.wrapHandler(legacyActionHandler, RequestMetadata{
+		Service:     "test.httpgen.BackwardCompatService",
+		Method:      "LegacyAction",
+		Procedure:   "test.httpgen.BackwardCompatService.LegacyAction",
+		HTTPMethod:  "POST",
+		PathPattern: "/generated/legacy_action",
+	})
 	config.mux.Handle("POST /generated/legacy_action", legacyActionHandler)
 
 	return nil

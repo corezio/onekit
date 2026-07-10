@@ -28,6 +28,13 @@ func RegisterNoAnnotationsServiceServer(server NoAnnotationsServiceServer, opts 
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	simpleActionHandler = config.wrapHandler(simpleActionHandler, RequestMetadata{
+		Service:     "test.httpgen.compat.NoAnnotationsService",
+		Method:      "SimpleAction",
+		Procedure:   "test.httpgen.compat.NoAnnotationsService.SimpleAction",
+		HTTPMethod:  "POST",
+		PathPattern: "/generated/simple_action",
+	})
 	config.mux.Handle("POST /generated/simple_action", simpleActionHandler)
 
 	methodHeaders = getAnotherActionHeaders()
@@ -37,6 +44,13 @@ func RegisterNoAnnotationsServiceServer(server NoAnnotationsServiceServer, opts 
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	anotherActionHandler = config.wrapHandler(anotherActionHandler, RequestMetadata{
+		Service:     "test.httpgen.compat.NoAnnotationsService",
+		Method:      "AnotherAction",
+		Procedure:   "test.httpgen.compat.NoAnnotationsService.AnotherAction",
+		HTTPMethod:  "POST",
+		PathPattern: "/generated/another_action",
+	})
 	config.mux.Handle("POST /generated/another_action", anotherActionHandler)
 
 	return nil
@@ -88,6 +102,13 @@ func RegisterBasePathOnlyServiceServer(server BasePathOnlyServiceServer, opts ..
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	actionOneHandler = config.wrapHandler(actionOneHandler, RequestMetadata{
+		Service:     "test.httpgen.compat.BasePathOnlyService",
+		Method:      "ActionOne",
+		Procedure:   "test.httpgen.compat.BasePathOnlyService.ActionOne",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v2/action_one",
+	})
 	config.mux.Handle("POST /api/v2/action_one", actionOneHandler)
 
 	methodHeaders = getActionTwoHeaders()
@@ -97,6 +118,13 @@ func RegisterBasePathOnlyServiceServer(server BasePathOnlyServiceServer, opts ..
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	actionTwoHandler = config.wrapHandler(actionTwoHandler, RequestMetadata{
+		Service:     "test.httpgen.compat.BasePathOnlyService",
+		Method:      "ActionTwo",
+		Procedure:   "test.httpgen.compat.BasePathOnlyService.ActionTwo",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v2/action_two",
+	})
 	config.mux.Handle("POST /api/v2/action_two", actionTwoHandler)
 
 	return nil

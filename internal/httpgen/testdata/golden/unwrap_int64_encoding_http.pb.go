@@ -27,6 +27,13 @@ func RegisterTestServiceServer(server TestServiceServer, opts ...ServerOption) e
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getCombinedHandler = config.wrapHandler(getCombinedHandler, RequestMetadata{
+		Service:     "testdata.unwrapint64encoding.TestService",
+		Method:      "GetCombined",
+		Procedure:   "testdata.unwrapint64encoding.TestService.GetCombined",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v1/combined",
+	})
 	config.mux.Handle("POST /api/v1/combined", getCombinedHandler)
 
 	return nil

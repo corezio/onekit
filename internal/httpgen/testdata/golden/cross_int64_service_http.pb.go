@@ -27,6 +27,13 @@ func RegisterBarsServiceServer(server BarsServiceServer, opts ...ServerOption) e
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getBarsHandler = config.wrapHandler(getBarsHandler, RequestMetadata{
+		Service:     "test.httpgen.crossint64.BarsService",
+		Method:      "GetBars",
+		Procedure:   "test.httpgen.crossint64.BarsService.GetBars",
+		HTTPMethod:  "GET",
+		PathPattern: "/v2/bars",
+	})
 	config.mux.Handle("GET /v2/bars", getBarsHandler)
 
 	return nil

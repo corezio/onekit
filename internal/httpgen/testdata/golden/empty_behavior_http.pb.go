@@ -27,6 +27,13 @@ func RegisterEmptyBehaviorServiceServer(server EmptyBehaviorServiceServer, opts 
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getResponseHandler = config.wrapHandler(getResponseHandler, RequestMetadata{
+		Service:     "testdata.empty_behavior.EmptyBehaviorService",
+		Method:      "GetResponse",
+		Procedure:   "testdata.empty_behavior.EmptyBehaviorService.GetResponse",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/responses/{id}",
+	})
 	config.mux.Handle("GET /api/v1/responses/{id}", getResponseHandler)
 
 	return nil

@@ -28,6 +28,13 @@ func RegisterBytesEncodingServiceServer(server BytesEncodingServiceServer, opts 
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	testBytesEncodingHandler = config.wrapHandler(testBytesEncodingHandler, RequestMetadata{
+		Service:     "testdata.bytes_encoding.BytesEncodingService",
+		Method:      "TestBytesEncoding",
+		Procedure:   "testdata.bytes_encoding.BytesEncodingService.TestBytesEncoding",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v1/bytes-encoding",
+	})
 	config.mux.Handle("POST /api/v1/bytes-encoding", testBytesEncodingHandler)
 
 	methodHeaders = getGetBytesEncodingHeaders()
@@ -37,6 +44,13 @@ func RegisterBytesEncodingServiceServer(server BytesEncodingServiceServer, opts 
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getBytesEncodingHandler = config.wrapHandler(getBytesEncodingHandler, RequestMetadata{
+		Service:     "testdata.bytes_encoding.BytesEncodingService",
+		Method:      "GetBytesEncoding",
+		Procedure:   "testdata.bytes_encoding.BytesEncodingService.GetBytesEncoding",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/bytes-encoding/{id}",
+	})
 	config.mux.Handle("GET /api/v1/bytes-encoding/{id}", getBytesEncodingHandler)
 
 	return nil

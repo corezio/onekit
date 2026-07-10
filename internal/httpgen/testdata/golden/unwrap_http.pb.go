@@ -27,6 +27,13 @@ func RegisterOptionDataServiceServer(server OptionDataServiceServer, opts ...Ser
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getOptionBarsHandler = config.wrapHandler(getOptionBarsHandler, RequestMetadata{
+		Service:     "test.httpgen.unwrap.OptionDataService",
+		Method:      "GetOptionBars",
+		Procedure:   "test.httpgen.unwrap.OptionDataService.GetOptionBars",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v1/options/bars",
+	})
 	config.mux.Handle("POST /api/v1/options/bars", getOptionBarsHandler)
 
 	return nil
@@ -69,6 +76,13 @@ func RegisterUnwrapServiceServer(server UnwrapServiceServer, opts ...ServerOptio
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getOptionBarsHandler = config.wrapHandler(getOptionBarsHandler, RequestMetadata{
+		Service:     "test.httpgen.unwrap.UnwrapService",
+		Method:      "GetOptionBars",
+		Procedure:   "test.httpgen.unwrap.UnwrapService.GetOptionBars",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v1/options/bars",
+	})
 	config.mux.Handle("POST /api/v1/options/bars", getOptionBarsHandler)
 
 	methodHeaders = getGetRootMapHeaders()
@@ -78,6 +92,13 @@ func RegisterUnwrapServiceServer(server UnwrapServiceServer, opts ...ServerOptio
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getRootMapHandler = config.wrapHandler(getRootMapHandler, RequestMetadata{
+		Service:     "test.httpgen.unwrap.UnwrapService",
+		Method:      "GetRootMap",
+		Procedure:   "test.httpgen.unwrap.UnwrapService.GetRootMap",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v1/root/map",
+	})
 	config.mux.Handle("POST /api/v1/root/map", getRootMapHandler)
 
 	methodHeaders = getGetRootRepeatedHeaders()
@@ -87,6 +108,13 @@ func RegisterUnwrapServiceServer(server UnwrapServiceServer, opts ...ServerOptio
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getRootRepeatedHandler = config.wrapHandler(getRootRepeatedHandler, RequestMetadata{
+		Service:     "test.httpgen.unwrap.UnwrapService",
+		Method:      "GetRootRepeated",
+		Procedure:   "test.httpgen.unwrap.UnwrapService.GetRootRepeated",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v1/root/repeated",
+	})
 	config.mux.Handle("POST /api/v1/root/repeated", getRootRepeatedHandler)
 
 	methodHeaders = getGetRootMapWithValueUnwrapHeaders()
@@ -96,6 +124,13 @@ func RegisterUnwrapServiceServer(server UnwrapServiceServer, opts ...ServerOptio
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getRootMapWithValueUnwrapHandler = config.wrapHandler(getRootMapWithValueUnwrapHandler, RequestMetadata{
+		Service:     "test.httpgen.unwrap.UnwrapService",
+		Method:      "GetRootMapWithValueUnwrap",
+		Procedure:   "test.httpgen.unwrap.UnwrapService.GetRootMapWithValueUnwrap",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v1/root/map-value-unwrap",
+	})
 	config.mux.Handle("POST /api/v1/root/map-value-unwrap", getRootMapWithValueUnwrapHandler)
 
 	return nil

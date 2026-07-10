@@ -28,6 +28,13 @@ func RegisterNullableServiceServer(server NullableServiceServer, opts ...ServerO
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getUserHandler = config.wrapHandler(getUserHandler, RequestMetadata{
+		Service:     "testdata.nullable.NullableService",
+		Method:      "GetUser",
+		Procedure:   "testdata.nullable.NullableService.GetUser",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/users/{id}",
+	})
 	config.mux.Handle("GET /api/v1/users/{id}", getUserHandler)
 
 	methodHeaders = getUpdateUserHeaders()
@@ -37,6 +44,13 @@ func RegisterNullableServiceServer(server NullableServiceServer, opts ...ServerO
 		"PUT", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	updateUserHandler = config.wrapHandler(updateUserHandler, RequestMetadata{
+		Service:     "testdata.nullable.NullableService",
+		Method:      "UpdateUser",
+		Procedure:   "testdata.nullable.NullableService.UpdateUser",
+		HTTPMethod:  "PUT",
+		PathPattern: "/api/v1/users/{id}",
+	})
 	config.mux.Handle("PUT /api/v1/users/{id}", updateUserHandler)
 
 	return nil

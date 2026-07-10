@@ -33,6 +33,13 @@ func RegisterQueryParamServiceServer(server QueryParamServiceServer, opts ...Ser
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	searchWithTypesHandler = config.wrapHandler(searchWithTypesHandler, RequestMetadata{
+		Service:     "test.httpgen.query.QueryParamService",
+		Method:      "SearchWithTypes",
+		Procedure:   "test.httpgen.query.QueryParamService.SearchWithTypes",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/search/typed",
+	})
 	config.mux.Handle("GET /api/search/typed", searchWithTypesHandler)
 
 	methodHeaders = getSearchRequiredHeaders()
@@ -42,6 +49,13 @@ func RegisterQueryParamServiceServer(server QueryParamServiceServer, opts ...Ser
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	searchRequiredHandler = config.wrapHandler(searchRequiredHandler, RequestMetadata{
+		Service:     "test.httpgen.query.QueryParamService",
+		Method:      "SearchRequired",
+		Procedure:   "test.httpgen.query.QueryParamService.SearchRequired",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/search/required",
+	})
 	config.mux.Handle("GET /api/search/required", searchRequiredHandler)
 
 	methodHeaders = getSearchCustomNamesHeaders()
@@ -51,6 +65,13 @@ func RegisterQueryParamServiceServer(server QueryParamServiceServer, opts ...Ser
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	searchCustomNamesHandler = config.wrapHandler(searchCustomNamesHandler, RequestMetadata{
+		Service:     "test.httpgen.query.QueryParamService",
+		Method:      "SearchCustomNames",
+		Procedure:   "test.httpgen.query.QueryParamService.SearchCustomNames",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/search/custom",
+	})
 	config.mux.Handle("GET /api/search/custom", searchCustomNamesHandler)
 
 	methodHeaders = getGetWithFiltersHeaders()
@@ -60,6 +81,13 @@ func RegisterQueryParamServiceServer(server QueryParamServiceServer, opts ...Ser
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getWithFiltersHandler = config.wrapHandler(getWithFiltersHandler, RequestMetadata{
+		Service:     "test.httpgen.query.QueryParamService",
+		Method:      "GetWithFilters",
+		Procedure:   "test.httpgen.query.QueryParamService.GetWithFilters",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/resources/{resource_id}/items",
+	})
 	config.mux.Handle("GET /api/resources/{resource_id}/items", getWithFiltersHandler)
 
 	methodHeaders = getSearchAdvancedHeaders()
@@ -69,6 +97,13 @@ func RegisterQueryParamServiceServer(server QueryParamServiceServer, opts ...Ser
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	searchAdvancedHandler = config.wrapHandler(searchAdvancedHandler, RequestMetadata{
+		Service:     "test.httpgen.query.QueryParamService",
+		Method:      "SearchAdvanced",
+		Procedure:   "test.httpgen.query.QueryParamService.SearchAdvanced",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/search/advanced",
+	})
 	config.mux.Handle("GET /api/search/advanced", searchAdvancedHandler)
 
 	methodHeaders = getGetByRegionHeaders()
@@ -78,6 +113,13 @@ func RegisterQueryParamServiceServer(server QueryParamServiceServer, opts ...Ser
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getByRegionHandler = config.wrapHandler(getByRegionHandler, RequestMetadata{
+		Service:     "test.httpgen.query.QueryParamService",
+		Method:      "GetByRegion",
+		Procedure:   "test.httpgen.query.QueryParamService.GetByRegion",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/regions/{region}",
+	})
 	config.mux.Handle("GET /api/regions/{region}", getByRegionHandler)
 
 	methodHeaders = getGetDefaultsHeaders()
@@ -87,6 +129,13 @@ func RegisterQueryParamServiceServer(server QueryParamServiceServer, opts ...Ser
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getDefaultsHandler = config.wrapHandler(getDefaultsHandler, RequestMetadata{
+		Service:     "test.httpgen.query.QueryParamService",
+		Method:      "GetDefaults",
+		Procedure:   "test.httpgen.query.QueryParamService.GetDefaults",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/defaults",
+	})
 	config.mux.Handle("GET /api/defaults", getDefaultsHandler)
 
 	return nil

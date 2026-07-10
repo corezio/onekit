@@ -29,6 +29,13 @@ func RegisterBodySelectServiceServer(server BodySelectServiceServer, opts ...Ser
 		"PUT", "profile", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	updateProfileHandler = config.wrapHandler(updateProfileHandler, RequestMetadata{
+		Service:     "test.httpgen.bodyselect.BodySelectService",
+		Method:      "UpdateProfile",
+		Procedure:   "test.httpgen.bodyselect.BodySelectService.UpdateProfile",
+		HTTPMethod:  "PUT",
+		PathPattern: "/api/v1/users/{user_id}/profile",
+	})
 	config.mux.Handle("PUT /api/v1/users/{user_id}/profile", updateProfileHandler)
 
 	methodHeaders = getCreateNoteHeaders()
@@ -38,6 +45,13 @@ func RegisterBodySelectServiceServer(server BodySelectServiceServer, opts ...Ser
 		"POST", "note", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	createNoteHandler = config.wrapHandler(createNoteHandler, RequestMetadata{
+		Service:     "test.httpgen.bodyselect.BodySelectService",
+		Method:      "CreateNote",
+		Procedure:   "test.httpgen.bodyselect.BodySelectService.CreateNote",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v1/notes",
+	})
 	config.mux.Handle("POST /api/v1/notes", createNoteHandler)
 
 	methodHeaders = getCreateProfileHeaders()
@@ -47,6 +61,13 @@ func RegisterBodySelectServiceServer(server BodySelectServiceServer, opts ...Ser
 		"POST", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	createProfileHandler = config.wrapHandler(createProfileHandler, RequestMetadata{
+		Service:     "test.httpgen.bodyselect.BodySelectService",
+		Method:      "CreateProfile",
+		Procedure:   "test.httpgen.bodyselect.BodySelectService.CreateProfile",
+		HTTPMethod:  "POST",
+		PathPattern: "/api/v1/profiles",
+	})
 	config.mux.Handle("POST /api/v1/profiles", createProfileHandler)
 
 	return nil

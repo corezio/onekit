@@ -27,6 +27,13 @@ func RegisterInt64EncodingServiceServer(server Int64EncodingServiceServer, opts 
 		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getInt64TestHandler = config.wrapHandler(getInt64TestHandler, RequestMetadata{
+		Service:     "testdata.int64encoding.Int64EncodingService",
+		Method:      "GetInt64Test",
+		Procedure:   "testdata.int64encoding.Int64EncodingService.GetInt64Test",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/test/int64/{id}",
+	})
 	config.mux.Handle("GET /api/v1/test/int64/{id}", getInt64TestHandler)
 
 	return nil
