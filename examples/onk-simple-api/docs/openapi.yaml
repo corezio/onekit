@@ -1,0 +1,195 @@
+openapi: 3.1.0
+info:
+    title: OnkSimpleAPI
+    description: Example service migrated from examples/simple-api to .onk
+    version: 1.0.0
+paths:
+    /api/v1/users:
+        post:
+            tags:
+                - UserService
+            summary: createUser
+            description: Create a new user.
+            operationId: createUser
+            parameters:
+                - name: X-API-Key
+                  in: header
+                  required: true
+                  schema:
+                    type: string
+                    format: uuid
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateUserRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/User'
+    /api/v1/users/get:
+        post:
+            tags:
+                - UserService
+            summary: getUser
+            description: Get a user by ID.
+            operationId: getUser
+            parameters:
+                - name: X-API-Key
+                  in: header
+                  required: true
+                  schema:
+                    type: string
+                    format: uuid
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetUserRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/User'
+    /api/v1/auth/login:
+        post:
+            tags:
+                - UserService
+            summary: login
+            description: Login with different authentication methods.
+            operationId: login
+            parameters:
+                - name: X-API-Key
+                  in: header
+                  required: true
+                  schema:
+                    type: string
+                    format: uuid
+                - name: X-Request-Id
+                  in: header
+                  required: true
+                  schema:
+                    type: string
+                    format: uuid
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/LoginRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/LoginResponse'
+components:
+    schemas:
+        User:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                email:
+                    type: string
+                created_at:
+                    type: string
+                    format: int64
+        CreateUserRequest:
+            type: object
+            properties:
+                name:
+                    type: string
+                email:
+                    type: string
+        GetUserRequest:
+            type: object
+            properties:
+                id:
+                    type: string
+        EmailAuth:
+            type: object
+            properties:
+                email:
+                    type: string
+                password:
+                    type: string
+                use_two_factor:
+                    type: boolean
+                two_factor_code:
+                    type: string
+        TokenAuth:
+            type: object
+            properties:
+                token:
+                    type: string
+                token_type:
+                    type: string
+                issued_at:
+                    type: string
+                    format: int64
+        SocialAuth:
+            type: object
+            properties:
+                provider:
+                    type: string
+                access_token:
+                    type: string
+                redirect_uri:
+                    type: string
+                state:
+                    type: string
+                permissions:
+                    type: array
+                    items:
+                        type: string
+        LoginRequest:
+            type: object
+            properties:
+                device_id:
+                    type: string
+                ip_address:
+                    type: string
+                retry_count:
+                    type: integer
+                    format: int32
+                user_agent:
+                    type: string
+                auth_method:
+                    oneOf:
+                        - $ref: '#/components/schemas/EmailAuth'
+                        - $ref: '#/components/schemas/TokenAuth'
+                        - $ref: '#/components/schemas/SocialAuth'
+                remember_me:
+                    type: boolean
+                session_id:
+                    type: string
+                timestamp:
+                    type: string
+                    format: int64
+                scopes:
+                    type: array
+                    items:
+                        type: string
+        LoginResponse:
+            type: object
+            properties:
+                access_token:
+                    type: string
+                refresh_token:
+                    type: string
+                expires_in:
+                    type: string
+                    format: int64
+                user:
+                    $ref: '#/components/schemas/User'
