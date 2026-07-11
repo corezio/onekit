@@ -22,7 +22,6 @@ help:
 	@echo "  lint-fix         Run golangci-lint with auto-fix"
 	@echo "  list-binaries    Show generator binary targets"
 	@echo "  proto            Regenerate onekit annotation Go files"
-	@echo "  publish          Publish annotations to Buf Schema Registry"
 	@echo "  test             Run full test script"
 	@echo "  test-fast        Run fast test script"
 	@echo ""

@@ -1,0 +1,121 @@
+package onek
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+)
+
+const modelsOnk = `
+package app.models
+
+message User {
+  id: string
+  name: string @len(2, 100)
+  email: string @email
+}
+
+message CreateUserRequest {
+  name: string @len(2, 100)
+  email: string @email
+}
+
+message GetUserRequest {
+  id: string
+}
+
+message NotFoundError @status(404) {
+  resource_type: string
+  resource_id: string
+}
+`
+
+const serviceOnk = `
+package app.services
+
+service UserService {
+  base_path: "/api/v1"
+
+  createUser(CreateUserRequest) -> User @post("/users")
+
+  getUser(GetUserRequest) -> User | NotFoundError @get("/users/{id}")
+}
+`
+
+const onekitToml = `
+module = "example.com/testproject/api"
+
+[generate.go-server]
+out = "./api"
+
+[generate.go-client]
+out = "./api"
+
+[generate.openapi]
+out = "./docs"
+title = "Test Project"
+version = "1.0.0"
+`
+
+func writeTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+func TestCheckSucceedsOnValidProject(t *testing.T) {
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "models.onk"), modelsOnk)
+	writeTestFile(t, filepath.Join(dir, "service.onk"), serviceOnk)
+
+	if err := Check(dir); err != nil {
+		t.Fatalf("Check error: %v", err)
+	}
+}
+
+func TestCheckFailsOnUnresolvedType(t *testing.T) {
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "bad.onk"), "message M {\n  x: Missing\n}\n")
+
+	if err := Check(dir); err == nil {
+		t.Fatalf("expected Check error, got nil")
+	}
+}
+
+func TestBuildGeneratesWorkingGoCode(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go toolchain not available")
+	}
+
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "onekit.toml"), onekitToml)
+	writeTestFile(t, filepath.Join(dir, "models.onk"), modelsOnk)
+	writeTestFile(t, filepath.Join(dir, "service.onk"), serviceOnk)
+
+	if err := Build(dir); err != nil {
+		t.Fatalf("Build error: %v", err)
+	}
+
+	apiDir := filepath.Join(dir, "api")
+	for _, name := range []string{"types.gen.go", "validate.gen.go", "server.gen.go", "client.gen.go"} {
+		if _, err := os.Stat(filepath.Join(apiDir, name)); err != nil {
+			t.Fatalf("expected generated file %s: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "docs", "openapi.yaml")); err != nil {
+		t.Fatalf("expected generated openapi.yaml: %v", err)
+	}
+
+	writeTestFile(t, filepath.Join(apiDir, "go.mod"), "module example.com/testproject/api\n\ngo 1.26\n")
+	cmd := exec.Command("go", "build", "./...")
+	cmd.Dir = apiDir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("generated Go package failed to build: %v\n%s", err, out)
+	}
+}
