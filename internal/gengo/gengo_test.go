@@ -34,12 +34,34 @@ message NotFoundError @status(404) {
   resource_id: string
 }
 
+message TextPayload {
+  body: string
+}
+
+message ImagePayload {
+  url: string
+}
+
+message SendMessageRequest {
+  channel: string
+  payload: oneof(discriminator: "type") {
+    text: TextPayload
+    image: ImagePayload
+  }
+}
+
+message SendMessageResponse {
+  message_id: string
+}
+
 service UserService {
   base_path: "/api/v1"
 
   createUser(CreateUserRequest) -> User @post("/users")
 
   getUser(GetUserRequest) -> User | NotFoundError @get("/users/{id}")
+
+  sendMessage(SendMessageRequest) -> SendMessageResponse @post("/messages")
 }
 `
 
@@ -129,6 +151,17 @@ func (s *impl) GetUser(ctx context.Context, req *GetUserRequest) (*User, error) 
 	return u, nil
 }
 
+func (s *impl) SendMessage(ctx context.Context, req *SendMessageRequest) (*SendMessageResponse, error) {
+	switch v := req.Payload.(type) {
+	case *SendMessageRequestPayloadText:
+		return &SendMessageResponse{MessageId: "text:" + v.Text.Body}, nil
+	case *SendMessageRequestPayloadImage:
+		return &SendMessageResponse{MessageId: "image:" + v.Image.Url}, nil
+	default:
+		return nil, fmt.Errorf("no payload set")
+	}
+}
+
 func fail(msg string, args ...any) {
 	fmt.Printf(msg+"\n", args...)
 	os.Exit(1)
@@ -174,6 +207,28 @@ func main() {
 	_, err = client.CreateUser(ctx, &CreateUserRequest{Name: "A", Email: "not-an-email"})
 	if err == nil {
 		fail("expected error for invalid create, got nil")
+	}
+
+	textMsg, err := client.SendMessage(ctx, &SendMessageRequest{
+		Channel: "general",
+		Payload: &SendMessageRequestPayloadText{Text: &TextPayload{Body: "hello"}},
+	})
+	if err != nil {
+		fail("SendMessage(text) failed: %v", err)
+	}
+	if textMsg.MessageId != "text:hello" {
+		fail("unexpected text message result: %+v", textMsg)
+	}
+
+	imageMsg, err := client.SendMessage(ctx, &SendMessageRequest{
+		Channel: "general",
+		Payload: &SendMessageRequestPayloadImage{Image: &ImagePayload{Url: "https://example.com/x.png"}},
+	})
+	if err != nil {
+		fail("SendMessage(image) failed: %v", err)
+	}
+	if imageMsg.MessageId != "image:https://example.com/x.png" {
+		fail("unexpected image message result: %+v", imageMsg)
 	}
 
 	fmt.Println("OK")

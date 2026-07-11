@@ -51,6 +51,41 @@ func typeUsesTime(t *onkir.Type) bool {
 	}
 }
 
+func hasOneofMessages(file *onkir.File) bool {
+	for _, m := range file.Messages {
+		if messageOrNestedHasOneof(m) {
+			return true
+		}
+	}
+	return false
+}
+
+func messageOrNestedHasOneof(m *onkir.Message) bool {
+	if hasOneofField(m) {
+		return true
+	}
+	for _, nested := range m.Nested {
+		if messageOrNestedHasOneof(nested) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasOneofField(m *onkir.Message) bool {
+	return len(oneofFields(m)) > 0
+}
+
+func oneofFields(m *onkir.Message) []*onkir.Field {
+	var fields []*onkir.Field
+	for _, f := range m.Fields {
+		if f.Oneof != nil {
+			fields = append(fields, f)
+		}
+	}
+	return fields
+}
+
 func hasErrorMessages(file *onkir.File) bool {
 	for _, m := range file.Messages {
 		if messageOrNestedHasError(m) {
@@ -80,14 +115,20 @@ func GenerateTypes(file *onkir.File) ([]byte, error) {
 
 	needsTime := needsTimeImport(file)
 	needsErrorHelpers := hasErrorMessages(file)
-	if needsTime || needsErrorHelpers {
+	needsJSON := hasOneofMessages(file)
+	if needsTime || needsErrorHelpers || needsJSON {
 		p.P("import (")
-		if needsTime {
-			p.P(`"time"`)
+		if needsJSON {
+			p.P(`"encoding/json"`)
 		}
 		if needsErrorHelpers {
 			p.P(`"fmt"`)
+		}
+		if needsErrorHelpers {
 			p.P(`"strings"`)
+		}
+		if needsTime {
+			p.P(`"time"`)
 		}
 		p.P(")")
 		p.P()
@@ -143,6 +184,9 @@ func writeMessage(p *Printer, m *onkir.Message) {
 	if m.IsError() {
 		writeErrorMethod(p, m)
 	}
+	if hasOneofField(m) {
+		writeOneofJSONMethods(p, m)
+	}
 
 	for _, f := range m.Fields {
 		if f.Oneof != nil {
@@ -155,6 +199,109 @@ func writeMessage(p *Printer, m *onkir.Message) {
 	for _, nested := range m.NestedEnums {
 		writeEnum(p, nested)
 	}
+}
+
+func oneofDiscriminatorName(f *onkir.Field) string {
+	if disc, ok := f.Oneof.Discriminator(); ok && disc != "" {
+		return disc
+	}
+	return "type"
+}
+
+// writeOneofJSONMethods generates MarshalJSON/UnmarshalJSON for messages
+// with oneof fields, since a Go interface-typed field can't be (de)serialized
+// by encoding/json without help: marshaling needs to pick the discriminator
+// tag for whichever concrete variant is set, and unmarshaling needs to read
+// the discriminator back out of the raw JSON before it can construct the
+// right concrete type. The `type alias X` trick shadows the oneof field at
+// a shallower struct depth so the promoted field from the embedded alias
+// never fights the raw-JSON one for the same key.
+func writeOneofJSONMethods(p *Printer, m *onkir.Message) {
+	writeOneofMarshalJSON(p, m)
+	writeOneofUnmarshalJSON(p, m)
+}
+
+func writeOneofMarshalJSON(p *Printer, m *onkir.Message) {
+	oneofs := oneofFields(m)
+
+	p.P("func (m *", m.Name, ") MarshalJSON() ([]byte, error) {")
+	p.P("type alias ", m.Name)
+	p.P("aux := struct {")
+	p.P("*alias")
+	for _, f := range oneofs {
+		p.P(PascalCase(f.Name), " json.RawMessage `json:\"", f.Name, ",omitempty\"`")
+	}
+	p.P("}{alias: (*alias)(m)}")
+	for _, f := range oneofs {
+		goName := PascalCase(f.Name)
+		discriminator := oneofDiscriminatorName(f)
+		p.P("if m.", goName, " != nil {")
+		p.P("var obj map[string]any")
+		p.P("switch v := m.", goName, ".(type) {")
+		for _, variant := range f.Oneof.Variants {
+			typeName := OneofVariantTypeName(m, f, variant)
+			p.P("case *", typeName, ":")
+			p.P(fmt.Sprintf(
+				"obj = map[string]any{%q: %q, %q: v.%s}",
+				discriminator, variant.Tag(), variant.Name, PascalCase(variant.Name),
+			))
+		}
+		p.P("}")
+		p.P("objBytes, err := json.Marshal(obj)")
+		p.P("if err != nil {")
+		p.P("return nil, err")
+		p.P("}")
+		p.P("aux.", goName, " = objBytes")
+		p.P("}")
+	}
+	p.P("return json.Marshal(aux)")
+	p.P("}")
+	p.P()
+}
+
+func writeOneofUnmarshalJSON(p *Printer, m *onkir.Message) {
+	oneofs := oneofFields(m)
+
+	p.P("func (m *", m.Name, ") UnmarshalJSON(data []byte) error {")
+	p.P("type alias ", m.Name)
+	p.P("aux := struct {")
+	p.P("*alias")
+	for _, f := range oneofs {
+		p.P(PascalCase(f.Name), " json.RawMessage `json:\"", f.Name, ",omitempty\"`")
+	}
+	p.P("}{alias: (*alias)(m)}")
+	p.P("if err := json.Unmarshal(data, &aux); err != nil {")
+	p.P("return err")
+	p.P("}")
+	for _, f := range oneofs {
+		goName := PascalCase(f.Name)
+		discriminator := oneofDiscriminatorName(f)
+		p.P("if len(aux.", goName, ") > 0 {")
+		p.P("var disc struct {")
+		p.P("Tag string `json:\"", discriminator, "\"`")
+		p.P("}")
+		p.P("if err := json.Unmarshal(aux.", goName, ", &disc); err != nil {")
+		p.P("return err")
+		p.P("}")
+		p.P("switch disc.Tag {")
+		for _, variant := range f.Oneof.Variants {
+			typeName := OneofVariantTypeName(m, f, variant)
+			innerGoType := GoFieldType(variant.Type)
+			p.P("case ", fmt.Sprintf("%q", variant.Tag()), ":")
+			p.P("var v struct {")
+			p.P("Val ", innerGoType, " `json:\"", variant.Name, "\"`")
+			p.P("}")
+			p.P("if err := json.Unmarshal(aux.", goName, ", &v); err != nil {")
+			p.P("return err")
+			p.P("}")
+			p.P("m.", goName, " = &", typeName, "{", PascalCase(variant.Name), ": v.Val}")
+		}
+		p.P("}")
+		p.P("}")
+	}
+	p.P("return nil")
+	p.P("}")
+	p.P()
 }
 
 func writeErrorMethod(p *Printer, m *onkir.Message) {
