@@ -6,7 +6,7 @@ package int64repeatednested
 import (
 	"context"
 
-	onekithttp "github.com/corezio/onekit/http"
+	onekithttp "github.com/1homsi/onekit/http"
 )
 
 // StockServiceServer is the server API for StockService service.

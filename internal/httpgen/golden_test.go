@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/corezio/onekit/internal/annotations"
+	"github.com/1homsi/onekit/internal/annotations"
 )
 
 // TestHTTPGenGoldenFiles tests HTTP handler generation against golden files.

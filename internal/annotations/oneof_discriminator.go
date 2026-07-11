@@ -7,7 +7,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	"github.com/corezio/onekit/http"
+	"github.com/1homsi/onekit/http"
 )
 
 // OneofDiscriminatorInfo holds parsed oneof discriminator configuration for a single oneof.

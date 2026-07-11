@@ -13,7 +13,7 @@ import (
 	"google.golang.org/protobuf/compiler/protogen"
 	k8syaml "sigs.k8s.io/yaml"
 
-	"github.com/corezio/onekit/internal/annotations"
+	"github.com/1homsi/onekit/internal/annotations"
 )
 
 // OutputFormat represents the output format for the OpenAPI document.

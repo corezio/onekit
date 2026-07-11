@@ -3,7 +3,7 @@ package tsclientgen
 import (
 	"google.golang.org/protobuf/compiler/protogen"
 
-	"github.com/corezio/onekit/internal/tscommon"
+	"github.com/1homsi/onekit/internal/tscommon"
 )
 
 // collectServiceMessages collects all messages transitively referenced by services in a file.

@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/corezio/onekit/examples/market-data-unwrap/api/proto/models"
-	"github.com/corezio/onekit/examples/market-data-unwrap/api/proto/services"
+	"github.com/1homsi/onekit/examples/market-data-unwrap/api/proto/models"
+	"github.com/1homsi/onekit/examples/market-data-unwrap/api/proto/services"
 )
 
 // MarketDataServer implements the MarketDataServiceServer interface with sample data.

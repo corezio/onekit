@@ -1,15 +1,15 @@
-module github.com/corezio/onekit/examples/simple-api
+module github.com/1homsi/onekit/examples/simple-api
 
 go 1.26.0
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20260415201107-50325440f8f2.1
 	buf.build/go/protovalidate v0.14.0
-	github.com/corezio/onekit v0.0.0-20250818125809-ff61bcf670dd
+	github.com/1homsi/onekit v0.0.0-20250818125809-ff61bcf670dd
 	google.golang.org/protobuf v1.36.11
 )
 
-replace github.com/corezio/onekit => ../..
+replace github.com/1homsi/onekit => ../..
 
 require (
 	cel.dev/expr v0.23.1 // indirect

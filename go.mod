@@ -1,4 +1,4 @@
-module github.com/corezio/onekit
+module github.com/1homsi/onekit
 
 go 1.26.0
 

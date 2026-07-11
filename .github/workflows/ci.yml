@@ -448,8 +448,8 @@ jobs:
       - name: Compile generated code
         run: |
           cd integration-test-output
-          go mod init github.com/corezio/onekit/internal/httpgen/testdata/generated
-          go mod edit -replace github.com/corezio/onekit=..
+          go mod init github.com/1homsi/onekit/internal/httpgen/testdata/generated
+          go mod edit -replace github.com/1homsi/onekit=..
           go mod tidy
           go build ./...
 

@@ -6,7 +6,7 @@ import (
 
 	"google.golang.org/protobuf/compiler/protogen"
 
-	"github.com/corezio/onekit/internal/annotations"
+	"github.com/1homsi/onekit/internal/annotations"
 )
 
 // OneofDiscriminatorContext holds information about a message that needs custom JSON encoding

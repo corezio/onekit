@@ -6,7 +6,7 @@ package generated
 import (
 	"context"
 
-	onekithttp "github.com/corezio/onekit/http"
+	onekithttp "github.com/1homsi/onekit/http"
 )
 
 // OptionDataServiceServer is the server API for OptionDataService service.

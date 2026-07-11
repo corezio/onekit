@@ -4,7 +4,7 @@ managed:
   enabled: true
   override:
     - file_option: go_package_prefix
-      value: github.com/corezio/onekit/examples/ts-fullstack-demo/gen
+      value: github.com/1homsi/onekit/examples/ts-fullstack-demo/gen
     - file_option: go_package_prefix
       module: buf.build/corezio/onekit
       value: ""

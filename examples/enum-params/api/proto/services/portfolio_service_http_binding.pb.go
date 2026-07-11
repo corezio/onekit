@@ -22,7 +22,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	onekithttp "github.com/corezio/onekit/http"
+	onekithttp "github.com/1homsi/onekit/http"
 )
 
 const (
@@ -68,8 +68,10 @@ func getRequest[Req any](ctx context.Context) Req {
 // BindingMiddleware creates a middleware that binds HTTP requests to protobuf messages
 // and validates them using protovalidate and header validation.
 // It supports path parameters, query parameters, and request body binding.
+// When bodyField is non-empty, the request body binds into that sub-message field
+// instead of the whole request message (body field selection).
 func BindingMiddleware[Req any](next http.Handler, serviceHeaders, methodHeaders []*onekithttp.Header,
-	pathParams []PathParamConfig, queryParams []QueryParamConfig, httpMethod string, errorHandler ErrorHandler, marshalOpts protojson.MarshalOptions) http.Handler {
+	pathParams []PathParamConfig, queryParams []QueryParamConfig, httpMethod string, bodyField string, maxRequestBytes int64, errorHandler ErrorHandler, marshalOpts protojson.MarshalOptions) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Validate headers first
 		if validationErr := validateHeaders(r, serviceHeaders, methodHeaders); validationErr != nil {
@@ -84,7 +86,15 @@ func BindingMiddleware[Req any](next http.Handler, serviceHeaders, methodHeaders
 		// calls proto.Reset(), which would wipe any previously-set fields.
 		// By binding body first, path and query params applied afterwards take precedence.
 		if httpMethod == "POST" || httpMethod == "PUT" || httpMethod == "PATCH" {
-			err := bindDataBasedOnContentType(r, toBind)
+			if maxRequestBytes > 0 {
+				r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
+			}
+			var err error
+			if bodyField != "" {
+				err = bindBodyToField(r, toBind, bodyField)
+			} else {
+				err = bindDataBasedOnContentType(r, toBind)
+			}
 			if err != nil {
 				// For binding errors, return a simple validation error
 				validationErr := &onekithttp.ValidationError{
@@ -197,6 +207,46 @@ func bindDataFromJSONRequest[Req any](r *http.Request, toBind *Req) error {
 	err = protojson.Unmarshal(bodyBytes, protoRequest)
 	if err != nil {
 		return fmt.Errorf("could not unmarshal request JSON: %w", err)
+	}
+	return nil
+}
+
+// bindBodyToField unmarshals the request body into a single sub-message field of the
+// request message instead of the whole message. Used when the HTTP config selects a
+// body field (body: "<field_name>"). Remaining fields bind from path/query params.
+func bindBodyToField[Req any](r *http.Request, toBind *Req, bodyField string) error {
+	bodyBytes, err := io.ReadAll(r.Body)
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+	if err != nil {
+		return fmt.Errorf("could not read request body: %w", err)
+	}
+	if len(bodyBytes) == 0 {
+		return nil
+	}
+
+	parent, ok := any(toBind).(proto.Message)
+	if !ok {
+		return errors.New("request is not a protocol buffer message")
+	}
+	fd := parent.ProtoReflect().Descriptor().Fields().ByName(protoreflect.Name(bodyField))
+	if fd == nil || fd.Kind() != protoreflect.MessageKind || fd.IsList() || fd.IsMap() {
+		return fmt.Errorf("body field %q is not a singular message field", bodyField)
+	}
+	sub := parent.ProtoReflect().Mutable(fd).Message().Interface()
+
+	switch filterFlags(r.Header.Get("Content-Type")) {
+	case BinaryContentType, ProtoContentType:
+		if unmarshalErr := proto.Unmarshal(bodyBytes, sub); unmarshalErr != nil {
+			return fmt.Errorf("could not unmarshal binary request body: %w", unmarshalErr)
+		}
+	default:
+		// Check for custom JSON unmarshaler (unwrap support)
+		if unmarshaler, ok := any(sub).(json.Unmarshaler); ok {
+			return unmarshaler.UnmarshalJSON(bodyBytes)
+		}
+		if unmarshalErr := protojson.Unmarshal(bodyBytes, sub); unmarshalErr != nil {
+			return fmt.Errorf("could not unmarshal request JSON: %w", unmarshalErr)
+		}
 	}
 	return nil
 }
@@ -591,6 +641,10 @@ func defaultErrorStatusCode(err error) int {
 	var valErr *onekithttp.ValidationError
 	if errors.As(err, &valErr) {
 		return http.StatusBadRequest
+	}
+	var handlerErr *onekithttp.Error
+	if errors.As(err, &handlerErr) {
+		return handlerErr.HTTPStatusCode()
 	}
 	return http.StatusInternalServerError
 }

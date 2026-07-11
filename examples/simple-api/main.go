@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/corezio/onekit/examples/simple-api/api/proto/models"
-	"github.com/corezio/onekit/examples/simple-api/api/proto/services"
+	"github.com/1homsi/onekit/examples/simple-api/api/proto/models"
+	"github.com/1homsi/onekit/examples/simple-api/api/proto/services"
 	"log"
 	"net/http"
 	"time"

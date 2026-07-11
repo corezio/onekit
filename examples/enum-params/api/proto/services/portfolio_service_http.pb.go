@@ -4,13 +4,13 @@
 package services
 
 import (
-	models "github.com/corezio/onekit/examples/enum-params/api/proto/models"
+	models "github.com/1homsi/onekit/examples/enum-params/api/proto/models"
 )
 
 import (
 	"context"
 
-	onekithttp "github.com/corezio/onekit/http"
+	onekithttp "github.com/1homsi/onekit/http"
 )
 
 // PortfolioServiceServer is the server API for PortfolioService service.
@@ -30,27 +30,48 @@ func RegisterPortfolioServiceServer(server PortfolioServiceServer, opts ...Serve
 	getPortfolioHandler := BindingMiddleware[GetPortfolioRequest](
 		genericHandler(server.GetPortfolio, config.errorHandler, config.marshalOpts), serviceHeaders, methodHeaders,
 		getPortfolioPathParams, getPortfolioQueryParams,
-		"GET", config.errorHandler, config.marshalOpts,
+		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getPortfolioHandler = config.wrapHandler(getPortfolioHandler, RequestMetadata{
+		Service:     "examples.enumparams.services.PortfolioService",
+		Method:      "GetPortfolio",
+		Procedure:   "examples.enumparams.services.PortfolioService.GetPortfolio",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/portfolio",
+	})
 	config.mux.Handle("GET /api/v1/portfolio", getPortfolioHandler)
 
 	methodHeaders = getGetByAssetClassHeaders()
 	getByAssetClassHandler := BindingMiddleware[GetByAssetClassRequest](
 		genericHandler(server.GetByAssetClass, config.errorHandler, config.marshalOpts), serviceHeaders, methodHeaders,
 		getByAssetClassPathParams, getByAssetClassQueryParams,
-		"GET", config.errorHandler, config.marshalOpts,
+		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	getByAssetClassHandler = config.wrapHandler(getByAssetClassHandler, RequestMetadata{
+		Service:     "examples.enumparams.services.PortfolioService",
+		Method:      "GetByAssetClass",
+		Procedure:   "examples.enumparams.services.PortfolioService.GetByAssetClass",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/portfolio/asset-class/{asset_class}",
+	})
 	config.mux.Handle("GET /api/v1/portfolio/asset-class/{asset_class}", getByAssetClassHandler)
 
 	methodHeaders = getSearchByAssetClassesHeaders()
 	searchByAssetClassesHandler := BindingMiddleware[SearchByAssetClassesRequest](
 		genericHandler(server.SearchByAssetClasses, config.errorHandler, config.marshalOpts), serviceHeaders, methodHeaders,
 		searchByAssetClassesPathParams, searchByAssetClassesQueryParams,
-		"GET", config.errorHandler, config.marshalOpts,
+		"GET", "", config.maxRequestBytes, config.errorHandler, config.marshalOpts,
 	)
 
+	searchByAssetClassesHandler = config.wrapHandler(searchByAssetClassesHandler, RequestMetadata{
+		Service:     "examples.enumparams.services.PortfolioService",
+		Method:      "SearchByAssetClasses",
+		Procedure:   "examples.enumparams.services.PortfolioService.SearchByAssetClasses",
+		HTTPMethod:  "GET",
+		PathPattern: "/api/v1/portfolio/search",
+	})
 	config.mux.Handle("GET /api/v1/portfolio/search", searchByAssetClassesHandler)
 
 	return nil

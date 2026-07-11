@@ -5,7 +5,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	"github.com/corezio/onekit/http"
+	"github.com/1homsi/onekit/http"
 )
 
 // GetEnumEncoding returns the enum encoding for a field.

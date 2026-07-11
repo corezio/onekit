@@ -4,7 +4,7 @@
 package services
 
 import (
-	models "github.com/corezio/onekit/examples/enum-params/api/proto/models"
+	models "github.com/1homsi/onekit/examples/enum-params/api/proto/models"
 )
 
 import (
@@ -15,11 +15,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
-	onekithttp "github.com/corezio/onekit/http"
+	onekithttp "github.com/1homsi/onekit/http"
 )
 
 const (
@@ -33,6 +34,19 @@ const (
 // It allows passing protojson.UnmarshalOptions (e.g. DiscardUnknown) through custom unmarshalers.
 type onekitUnmarshaler interface {
 	UnmarshalJSONOnekit(data []byte, opts protojson.UnmarshalOptions) error
+}
+
+// onekitIsRetryableStatus reports whether a status code is safe to retry:
+// 429 Too Many Requests, 502 Bad Gateway, 503 Service Unavailable, 504 Gateway Timeout.
+func onekitIsRetryableStatus(status int) bool {
+	switch status {
+	case http.StatusTooManyRequests,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout:
+		return true
+	}
+	return false
 }
 
 // PortfolioServiceClient is the client API for PortfolioService service.
@@ -49,6 +63,8 @@ type portfolioServiceClient struct {
 	contentType          string
 	defaultHeaders       map[string]string
 	discardUnknownFields bool
+	retryMaxAttempts     int
+	retryBackoff         time.Duration
 }
 
 var _ PortfolioServiceClient = (*portfolioServiceClient)(nil)
@@ -86,6 +102,17 @@ func WithPortfolioServiceDefaultHeader(key, value string) PortfolioServiceClient
 func WithPortfolioServiceDiscardUnknownFields(discard bool) PortfolioServiceClientOption {
 	return func(c *portfolioServiceClient) {
 		c.discardUnknownFields = discard
+	}
+}
+
+// WithPortfolioServiceRetry enables automatic retries for transient failures.
+// maxAttempts is the total number of attempts including the first (values < 1 disable retries).
+// baseBackoff is the delay before the first retry; it doubles on each subsequent retry.
+// Retried failures: transport errors and HTTP 429, 502, 503, 504. SSE streams are never retried.
+func WithPortfolioServiceRetry(maxAttempts int, baseBackoff time.Duration) PortfolioServiceClientOption {
+	return func(c *portfolioServiceClient) {
+		c.retryMaxAttempts = maxAttempts
+		c.retryBackoff = baseBackoff
 	}
 }
 
@@ -180,8 +207,8 @@ func (c *portfolioServiceClient) GetPortfolio(ctx context.Context, req *GetPortf
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -254,8 +281,8 @@ func (c *portfolioServiceClient) GetByAssetClass(ctx context.Context, req *GetBy
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -330,8 +357,8 @@ func (c *portfolioServiceClient) SearchByAssetClasses(ctx context.Context, req *
 		httpReq.Header.Set(k, v)
 	}
 
-	// Execute request
-	resp, err := c.httpClient.Do(httpReq)
+	// Execute request (with retries when configured)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -376,6 +403,49 @@ func (c *portfolioServiceClient) marshalRequest(req proto.Message, contentType s
 	default:
 		return protojson.Marshal(req)
 	}
+}
+
+func (c *portfolioServiceClient) doRequest(httpReq *http.Request) (*http.Response, error) {
+	maxAttempts := c.retryMaxAttempts
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
+	baseBackoff := c.retryBackoff
+	if baseBackoff <= 0 {
+		baseBackoff = 250 * time.Millisecond
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			backoff := baseBackoff << (attempt - 1)
+			select {
+			case <-httpReq.Context().Done():
+				return nil, httpReq.Context().Err()
+			case <-time.After(backoff):
+			}
+			if httpReq.GetBody != nil {
+				newBody, bodyErr := httpReq.GetBody()
+				if bodyErr != nil {
+					return nil, fmt.Errorf("failed to rewind request body for retry: %w", bodyErr)
+				}
+				httpReq.Body = newBody
+			}
+		}
+
+		resp, err := c.httpClient.Do(httpReq)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if attempt < maxAttempts-1 && onekitIsRetryableStatus(resp.StatusCode) {
+			_ = resp.Body.Close()
+			lastErr = fmt.Errorf("request failed with retryable status %d", resp.StatusCode)
+			continue
+		}
+		return resp, nil
+	}
+	return nil, lastErr
 }
 
 func (c *portfolioServiceClient) handleErrorResponse(statusCode int, body []byte, contentType string) error {

@@ -6,7 +6,7 @@ package int64encoding
 import (
 	"context"
 
-	onekithttp "github.com/corezio/onekit/http"
+	onekithttp "github.com/1homsi/onekit/http"
 )
 
 // Int64EncodingServiceServer is the server API for Int64EncodingService service.

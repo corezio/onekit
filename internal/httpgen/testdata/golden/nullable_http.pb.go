@@ -6,7 +6,7 @@ package nullable
 import (
 	"context"
 
-	onekithttp "github.com/corezio/onekit/http"
+	onekithttp "github.com/1homsi/onekit/http"
 )
 
 // NullableServiceServer is the server API for NullableService service.

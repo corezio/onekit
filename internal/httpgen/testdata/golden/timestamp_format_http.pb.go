@@ -6,7 +6,7 @@ package timestampformat
 import (
 	"context"
 
-	onekithttp "github.com/corezio/onekit/http"
+	onekithttp "github.com/1homsi/onekit/http"
 )
 
 // TimestampFormatServiceServer is the server API for TimestampFormatService service.

@@ -5,7 +5,7 @@ import (
 	nethttp "net/http"
 	"testing"
 
-	"github.com/corezio/onekit/http"
+	"github.com/1homsi/onekit/http"
 )
 
 func TestValidationError_Error(t *testing.T) {
@@ -107,7 +107,11 @@ func TestError_HTTPStatusCode(t *testing.T) {
 		{name: "nil", err: nil, want: nethttp.StatusInternalServerError},
 		{name: "unset", err: &http.Error{Message: "failed"}, want: nethttp.StatusInternalServerError},
 		{name: "invalid", err: &http.Error{Message: "failed", StatusCode: 42}, want: nethttp.StatusInternalServerError},
-		{name: "valid", err: &http.Error{Message: "missing", StatusCode: nethttp.StatusNotFound}, want: nethttp.StatusNotFound},
+		{
+			name: "valid",
+			err:  &http.Error{Message: "missing", StatusCode: nethttp.StatusNotFound},
+			want: nethttp.StatusNotFound,
+		},
 	}
 
 	for _, tt := range tests {

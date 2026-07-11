@@ -8,9 +8,15 @@ import (
 
 // NewError creates an HTTP-aware oneKit error for generated servers.
 func NewError(statusCode int, message string) *Error {
+	var status int32
+	if statusCode >= 100 && statusCode <= 999 {
+		status = int32(statusCode)
+	} else {
+		status = http.StatusInternalServerError
+	}
 	return &Error{
 		Message:    message,
-		StatusCode: int32(statusCode),
+		StatusCode: status,
 	}
 }
 

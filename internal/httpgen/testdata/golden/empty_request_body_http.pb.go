@@ -6,7 +6,7 @@ package emptyrequestbody
 import (
 	"context"
 
-	onekithttp "github.com/corezio/onekit/http"
+	onekithttp "github.com/1homsi/onekit/http"
 )
 
 // EmptyRequestBodyServiceServer is the server API for EmptyRequestBodyService service.

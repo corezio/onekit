@@ -6,7 +6,7 @@ package flatten
 import (
 	"context"
 
-	onekithttp "github.com/corezio/onekit/http"
+	onekithttp "github.com/1homsi/onekit/http"
 )
 
 // FlattenServiceServer is the server API for FlattenService service.

@@ -8,7 +8,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	"github.com/corezio/onekit/http"
+	"github.com/1homsi/onekit/http"
 )
 
 // IsFlattenField returns true if the field has flatten=true annotation.

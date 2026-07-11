@@ -6,7 +6,7 @@ package enumencoding
 import (
 	"context"
 
-	onekithttp "github.com/corezio/onekit/http"
+	onekithttp "github.com/1homsi/onekit/http"
 )
 
 // EnumEncodingServiceServer is the server API for EnumEncodingService service.

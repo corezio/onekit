@@ -6,8 +6,8 @@ import (
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	"github.com/corezio/onekit/http"
-	"github.com/corezio/onekit/internal/annotations"
+	"github.com/1homsi/onekit/http"
+	"github.com/1homsi/onekit/internal/annotations"
 )
 
 // BytesEncodingContext holds information about messages that need custom JSON encoding

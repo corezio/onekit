@@ -8,8 +8,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/corezio/onekit/examples/restful-crud/api/proto/models"
-	"github.com/corezio/onekit/examples/restful-crud/api/proto/services"
+	"github.com/1homsi/onekit/examples/restful-crud/api/proto/models"
+	"github.com/1homsi/onekit/examples/restful-crud/api/proto/services"
 )
 
 // ProductService implements the ProductServiceServer interface.

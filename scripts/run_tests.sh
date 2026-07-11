@@ -198,18 +198,54 @@ main() {
             exit 1
         fi
     else
+        local covermode="set"
         local coverage_args=("-coverprofile=$COVERAGE_PROFILE")
         if [ "$RACE_MODE" = true ]; then
             echo -e "${BLUE}Running race-enabled coverage tests across all packages...${NC}"
+            covermode="atomic"
             coverage_args=("-race" "-coverprofile=$COVERAGE_PROFILE" "-covermode=atomic")
         else
             echo -e "${BLUE}Running coverage tests across all packages...${NC}"
         fi
 
-        if ! TESTING_MODE=true go test "${coverage_args[@]}" "${test_args[@]}" $packages; then
-            echo -e "${RED}FAIL: Tests failed${NC}"
+        # Force a rebuild of generator plugins with coverage instrumentation
+        echo -e "${BLUE}Building generator plugins with coverage instrumentation (mode: $covermode)...${NC}"
+        if ! GO_BUILD_FLAGS="-cover -covermode=$covermode" make -B build; then
+            echo -e "${RED}FAIL: Plugin compilation failed${NC}"
             exit 1
         fi
+
+        # Set up a temporary directory to collect subprocess coverage data
+        local covdir="$(pwd)/coverage/covdata"
+        rm -rf "$covdir"
+        mkdir -p "$covdir"
+        export GOCOVERDIR="$covdir"
+        export SUBPROCESS_COV_DIR="$covdir"
+
+        if ! TESTING_MODE=true go test -count=1 "${coverage_args[@]}" "${test_args[@]}" $packages; then
+            echo -e "${RED}FAIL: Tests failed${NC}"
+            rm -rf "$covdir"
+            exit 1
+        fi
+
+        # If coverage data was successfully collected from the subprocesses,
+        # convert it and merge it into the main coverprofile.
+        if [ -n "$(ls -A "$covdir" 2>/dev/null)" ]; then
+            echo -e "${BLUE}Merging coverage data from subprocess generator plugins...${NC}"
+            local sub_cov="$COVERAGE_DIR/subprocesses.out"
+            if go tool covdata textfmt -i="$covdir" -o="$sub_cov" 2>/dev/null; then
+                local tmp_comb="$COVERAGE_DIR/combined.out"
+                (echo "mode: $covermode" && awk '!/^mode:/' "$COVERAGE_PROFILE" "$sub_cov" | awk 'NF==3 {key=$1 " " $2; count[key]+=$3} END {for (k in count) print k " " count[k]}' | sort) > "$tmp_comb"
+                mv "$tmp_comb" "$COVERAGE_PROFILE"
+            else
+                echo -e "${YELLOW}Warning: Failed to convert subprocess coverage data${NC}"
+            fi
+            rm -f "$sub_cov"
+        fi
+
+        # Clean up temporary coverage directory
+        rm -rf "$covdir"
+        unset SUBPROCESS_COV_DIR
     fi
 
     # Generate reports only in coverage mode.

@@ -7,7 +7,7 @@ import (
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	"github.com/corezio/onekit/internal/annotations"
+	"github.com/1homsi/onekit/internal/annotations"
 )
 
 // writeServiceClient emits a single client class for a proto service, including

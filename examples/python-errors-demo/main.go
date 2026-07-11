@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"strings"
 
-	pb "github.com/corezio/onekit/examples/python-errors-demo/api/proto"
+	pb "github.com/1homsi/onekit/examples/python-errors-demo/api/proto"
 	"google.golang.org/protobuf/proto"
 )
 

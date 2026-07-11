@@ -1,6 +1,7 @@
 BIN_DIR := ./bin
 CMD_DIR := ./cmd
 SCRIPTS_DIR := ./scripts
+GO_BUILD_FLAGS ?=
 
 CMD_DIRS := $(wildcard $(CMD_DIR)/*)
 BINARIES := $(notdir $(CMD_DIRS))
@@ -32,7 +33,7 @@ build: $(BINARY_PATHS)
 
 $(BIN_DIR)/%: $(CMD_DIR)/%/*.go | $(BIN_DIR)
 	@echo "Building $*..."
-	@go build -o $@ ./$(CMD_DIR)/$*
+	@go build $(GO_BUILD_FLAGS) -o $@ ./$(CMD_DIR)/$*
 
 $(BIN_DIR):
 	@mkdir -p $(BIN_DIR)
@@ -85,20 +86,14 @@ install-binaries:
 .PHONY: proto
 proto:
 	@echo "Generating Go code from proto files..."
-	@protoc --go_out=. --go_opt=module=github.com/corezio/onekit \
-		--go_opt=Monekit/http/annotations.proto=github.com/corezio/onekit/http \
-		--go_opt=Monekit/http/headers.proto=github.com/corezio/onekit/http \
-		--go_opt=Monekit/http/errors.proto=github.com/corezio/onekit/http \
+	@protoc --go_out=. --go_opt=module=github.com/1homsi/onekit \
+		--go_opt=Monekit/http/annotations.proto=github.com/1homsi/onekit/http \
+		--go_opt=Monekit/http/headers.proto=github.com/1homsi/onekit/http \
+		--go_opt=Monekit/http/errors.proto=github.com/1homsi/onekit/http \
 		--proto_path=. \
 		proto/onekit/http/annotations.proto \
 		proto/onekit/http/headers.proto \
 		proto/onekit/http/errors.proto
-
-.PHONY: publish
-publish:
-	@echo "Publishing annotations to Buf Schema Registry..."
-	@cd proto && buf push
-	@echo "OK: Published to buf.build/corezio/onekit"
 
 .PHONY: fmt
 fmt:

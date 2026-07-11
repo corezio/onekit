@@ -7,8 +7,8 @@ import (
 
 	"google.golang.org/protobuf/compiler/protogen"
 
-	"github.com/corezio/onekit/http"
-	"github.com/corezio/onekit/internal/annotations"
+	"github.com/1homsi/onekit/http"
+	"github.com/1homsi/onekit/internal/annotations"
 )
 
 // Generator handles HTTP code generation for protobuf services.
@@ -185,7 +185,7 @@ func (g *Generator) generateHTTPFile(file *protogen.File) error {
 	gf.P("import (")
 	gf.P(`"context"`)
 	gf.P()
-	gf.P(`onekithttp "github.com/corezio/onekit/http"`)
+	gf.P(`onekithttp "github.com/1homsi/onekit/http"`)
 	gf.P(")")
 	gf.P()
 
@@ -198,6 +198,7 @@ func (g *Generator) generateHTTPFile(file *protogen.File) error {
 	return nil
 }
 
+//nolint:funlen
 func (g *Generator) generateService(gf *protogen.GeneratedFile, file *protogen.File, service *protogen.Service) error {
 	serviceName := service.GoName
 
@@ -341,7 +342,7 @@ func (g *Generator) generateBindingFile(file *protogen.File) error {
 	gf.P(`"google.golang.org/protobuf/proto"`)
 	gf.P(`"google.golang.org/protobuf/reflect/protoreflect"`)
 	gf.P()
-	gf.P(`onekithttp "github.com/corezio/onekit/http"`)
+	gf.P(`onekithttp "github.com/1homsi/onekit/http"`)
 	gf.P(")")
 	gf.P()
 
@@ -958,6 +959,7 @@ func (g *Generator) generateErrorHandlerType(gf *protogen.GeneratedFile) {
 	gf.P()
 }
 
+//nolint:funlen
 func (g *Generator) generateServerOptionType(gf *protogen.GeneratedFile) {
 	gf.P("// RequestMetadata identifies the generated route handling a request.")
 	gf.P("type RequestMetadata struct {")
@@ -1018,6 +1020,7 @@ func (g *Generator) generateServerOptionType(gf *protogen.GeneratedFile) {
 	gf.P()
 }
 
+//nolint:funlen
 func (g *Generator) generateServerConfigurationStruct(gf *protogen.GeneratedFile) {
 	gf.P("const DefaultMaxRequestBytes int64 = 10 << 20")
 	gf.P()
@@ -1162,6 +1165,7 @@ func (g *Generator) generateConfigFunctions(gf *protogen.GeneratedFile) {
 	gf.P()
 }
 
+//nolint:funlen
 func (g *Generator) generateServerOptions(gf *protogen.GeneratedFile) {
 	gf.P("// WithMux configures the Server to use the given ServeMux")
 	gf.P("func WithMux(mux *http.ServeMux) ServerOption {")
