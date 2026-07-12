@@ -85,7 +85,11 @@ func writeClientClass(p *Printer, s *onkir.Service) {
 	p.P()
 
 	for _, m := range s.Methods {
-		writeClientMethod(p, s, m)
+		if m.IsStream() {
+			writeSSEClientMethod(p, s, m)
+		} else {
+			writeClientMethod(p, s, m)
+		}
 	}
 
 	p.P("}")

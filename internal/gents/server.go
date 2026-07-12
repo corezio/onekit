@@ -41,6 +41,9 @@ func GenerateServer(file *onkir.File) []byte {
 	p.P()
 
 	writeServerRuntime(p)
+	if fileHasStreamMethods(file) {
+		writeSSEResponseHelper(p)
+	}
 
 	for _, s := range file.Services {
 		writeHandlerInterface(p, s)
@@ -103,7 +106,11 @@ func writeServerRuntime(p *Printer) {
 func writeHandlerInterface(p *Printer, s *onkir.Service) {
 	p.P("export interface ", s.Name, "Handler {")
 	for _, m := range s.Methods {
-		p.P(CamelCase(m.Name), "(req: ", m.Request.Name, "): Promise<", m.Response.Name, ">;")
+		if m.IsStream() {
+			writeSSEHandlerMethod(p, m)
+		} else {
+			p.P(CamelCase(m.Name), "(req: ", m.Request.Name, "): Promise<", m.Response.Name, ">;")
+		}
 	}
 	p.P("}")
 	p.P()
@@ -114,7 +121,11 @@ func writeRouteFactory(p *Printer, s *onkir.Service) {
 	p.P("export function ", factoryName, "(handler: ", s.Name, "Handler): RouteDescriptor[] {")
 	p.P("return [")
 	for _, m := range s.Methods {
-		writeRoute(p, s, m)
+		if m.IsStream() {
+			writeSSERoute(p, s, m)
+		} else {
+			writeRoute(p, s, m)
+		}
 	}
 	p.P("];")
 	p.P("}")
