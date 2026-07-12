@@ -302,6 +302,36 @@ message Outer {
 	}
 }
 
+func TestParseFieldNamedMessageOrEnum(t *testing.T) {
+	src := `
+message Outer {
+  message: string
+  enum: int32
+  message Inner {
+    value: string
+  }
+  enum Kind {
+    A
+    B
+  }
+}
+`
+	f, err := Parse(src)
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	outer := f.Messages[0]
+	if len(outer.Fields) != 2 || outer.Fields[0].Name != "message" || outer.Fields[1].Name != "enum" {
+		t.Fatalf("unexpected fields: %+v", outer.Fields)
+	}
+	if len(outer.Nested) != 1 || outer.Nested[0].Name != "Inner" {
+		t.Fatalf("unexpected nested messages: %+v", outer.Nested)
+	}
+	if len(outer.NestedEn) != 1 || outer.NestedEn[0].Name != "Kind" {
+		t.Fatalf("unexpected nested enums: %+v", outer.NestedEn)
+	}
+}
+
 func TestParseEmptyDecoratorArgs(t *testing.T) {
 	src := `
 message M {

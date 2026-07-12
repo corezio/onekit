@@ -49,6 +49,23 @@ func (p *Parser) isIdent(text string) bool {
 	return p.tok.Kind == IDENT && p.tok.Text == text
 }
 
+// isKeywordIntroducer reports whether the current token is the identifier
+// text used as a keyword (e.g. "message", "enum") introducing a declaration,
+// as opposed to a field literally named "message"/"enum" (field syntax is
+// `name: Type`, so a following COLON means it's a field name, not a
+// keyword - checked via a cheap lexer clone since Lexer holds no pointers).
+func (p *Parser) isKeywordIntroducer(text string) bool {
+	if !p.isIdent(text) {
+		return false
+	}
+	clone := *p.lex
+	next, err := clone.Next()
+	if err != nil {
+		return true
+	}
+	return next.Kind != COLON
+}
+
 func (p *Parser) expectIdentText(text string) error {
 	if !p.isIdent(text) {
 		return p.errf("expected keyword %q, got %s %q", text, p.tok.Kind, p.tok.Text)
@@ -354,13 +371,13 @@ func (p *Parser) parseMessage() (*MessageDecl, error) {
 	}
 	for p.tok.Kind != RBRACE {
 		switch {
-		case p.isIdent("message"):
+		case p.isKeywordIntroducer("message"):
 			nested, err := p.parseMessage()
 			if err != nil {
 				return nil, err
 			}
 			m.Nested = append(m.Nested, nested)
-		case p.isIdent("enum"):
+		case p.isKeywordIntroducer("enum"):
 			nested, err := p.parseEnum()
 			if err != nil {
 				return nil, err
