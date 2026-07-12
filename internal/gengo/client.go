@@ -205,8 +205,14 @@ func writeClientQueryParams(p *Printer, req *onkir.Message) {
 		if queryName == "" {
 			queryName = field.Name
 		}
-		goExpr := "req." + PascalCase(field.Name)
-		p.P("query.Set(", fmt.Sprintf("%q", queryName), ", ", clientStringifyExpr(field.Type.Scalar, goExpr), ")")
+		fieldExpr := "req." + PascalCase(field.Name)
+		if field.Optional {
+			p.P("if ", fieldExpr, " != nil {")
+			p.P("query.Set(", fmt.Sprintf("%q", queryName), ", ", clientStringifyExpr(field.Type.Scalar, "*"+fieldExpr), ")")
+			p.P("}")
+			continue
+		}
+		p.P("query.Set(", fmt.Sprintf("%q", queryName), ", ", clientStringifyExpr(field.Type.Scalar, fieldExpr), ")")
 	}
 	p.P("if len(query) > 0 {")
 	p.P(`path += "?" + query.Encode()`)

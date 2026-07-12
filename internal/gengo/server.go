@@ -166,6 +166,12 @@ func writePathParamBinding(p *Printer, path string, req *onkir.Message) {
 		if !ok {
 			continue
 		}
+		if field.Optional {
+			varName := CamelCase(field.Name) + "Val"
+			p.P(varName, " := ", expr)
+			p.P("req.", PascalCase(paramName), " = &", varName)
+			continue
+		}
 		p.P("req.", PascalCase(paramName), " = ", expr)
 	}
 }
@@ -186,7 +192,13 @@ func writeQueryParamBinding(p *Printer, req *onkir.Message) {
 			continue
 		}
 		p.P("if ", strExpr, " != \"\" {")
-		p.P("req.", PascalCase(field.Name), " = ", expr)
+		if field.Optional {
+			varName := CamelCase(field.Name) + "Val"
+			p.P(varName, " := ", expr)
+			p.P("req.", PascalCase(field.Name), " = &", varName)
+		} else {
+			p.P("req.", PascalCase(field.Name), " = ", expr)
+		}
 		p.P("}")
 	}
 }

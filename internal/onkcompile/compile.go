@@ -2,6 +2,8 @@ package onkcompile
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"github.com/1homsi/onekit/internal/onkir"
 	"github.com/1homsi/onekit/internal/onklang"
@@ -22,19 +24,43 @@ type Source struct {
 	AST  *onklang.File
 }
 
+// dirMsg/dirEnum pair a declaration with the source directory it came from,
+// used to resolve cross-directory references and report ambiguous ones.
+type dirMsg struct {
+	dir string
+	msg *onkir.Message
+}
+
+type dirEnum struct {
+	dir string
+	enum *onkir.Enum
+}
+
+// compiler enforces message/enum name uniqueness per source directory (one
+// directory = one generated package, see internal/onek's sourceIndex) rather
+// than across the whole schema tree, since a project with many independent
+// services will naturally reuse common names like "GetDashboardRequest"
+// across unrelated directories. A name not found in the referencing file's
+// own directory falls back to a project-wide search, so cross-directory
+// references still resolve without import statements - it's only an error
+// when that name is ambiguous (declared in more than one other directory).
 type compiler struct {
-	msgByName  map[string]*onkir.Message
-	enumByName map[string]*onkir.Enum
+	msgByDir  map[string]map[string]*onkir.Message
+	enumByDir map[string]map[string]*onkir.Enum
+	msgAllByName  map[string][]dirMsg
+	enumAllByName map[string][]dirEnum
 	msgNode    map[*onklang.MessageDecl]*onkir.Message
 	enumNode   map[*onklang.EnumDecl]*onkir.Enum
 }
 
 func Compile(sources []Source) (*onkir.Package, error) {
 	c := &compiler{
-		msgByName:  map[string]*onkir.Message{},
-		enumByName: map[string]*onkir.Enum{},
-		msgNode:    map[*onklang.MessageDecl]*onkir.Message{},
-		enumNode:   map[*onklang.EnumDecl]*onkir.Enum{},
+		msgByDir:      map[string]map[string]*onkir.Message{},
+		enumByDir:     map[string]map[string]*onkir.Enum{},
+		msgAllByName:  map[string][]dirMsg{},
+		enumAllByName: map[string][]dirEnum{},
+		msgNode:       map[*onklang.MessageDecl]*onkir.Message{},
+		enumNode:      map[*onklang.EnumDecl]*onkir.Enum{},
 	}
 
 	var files []*onkir.File
@@ -78,16 +104,21 @@ func Compile(sources []Source) (*onkir.Package, error) {
 }
 
 func (c *compiler) declareMessage(md *onklang.MessageDecl, f *onkir.File, parent *onkir.Message, path string) (*onkir.Message, error) {
-	if _, exists := c.msgByName[md.Name]; exists {
+	dir := filepath.Dir(path)
+	if _, exists := c.msgByDir[dir][md.Name]; exists {
 		return nil, &Error{Path: path, Line: md.Line, Msg: fmt.Sprintf("duplicate message name %q", md.Name)}
 	}
-	if _, exists := c.enumByName[md.Name]; exists {
+	if _, exists := c.enumByDir[dir][md.Name]; exists {
 		return nil, &Error{Path: path, Line: md.Line, Msg: fmt.Sprintf("name %q already used by an enum", md.Name)}
 	}
 
 	m := &onkir.Message{Name: md.Name, Doc: md.Doc, File: f, Parent: parent}
 	m.Decorators = convertDecorators(md.Decorators)
-	c.msgByName[md.Name] = m
+	if c.msgByDir[dir] == nil {
+		c.msgByDir[dir] = map[string]*onkir.Message{}
+	}
+	c.msgByDir[dir][md.Name] = m
+	c.msgAllByName[md.Name] = append(c.msgAllByName[md.Name], dirMsg{dir: dir, msg: m})
 	c.msgNode[md] = m
 
 	for _, nested := range md.Nested {
@@ -109,15 +140,20 @@ func (c *compiler) declareMessage(md *onklang.MessageDecl, f *onkir.File, parent
 }
 
 func (c *compiler) declareEnum(ed *onklang.EnumDecl, f *onkir.File, parent *onkir.Message, path string) (*onkir.Enum, error) {
-	if _, exists := c.enumByName[ed.Name]; exists {
+	dir := filepath.Dir(path)
+	if _, exists := c.enumByDir[dir][ed.Name]; exists {
 		return nil, &Error{Path: path, Line: ed.Line, Msg: fmt.Sprintf("duplicate enum name %q", ed.Name)}
 	}
-	if _, exists := c.msgByName[ed.Name]; exists {
+	if _, exists := c.msgByDir[dir][ed.Name]; exists {
 		return nil, &Error{Path: path, Line: ed.Line, Msg: fmt.Sprintf("name %q already used by a message", ed.Name)}
 	}
 
 	e := &onkir.Enum{Name: ed.Name, Doc: ed.Doc, File: f, Parent: parent}
-	c.enumByName[ed.Name] = e
+	if c.enumByDir[dir] == nil {
+		c.enumByDir[dir] = map[string]*onkir.Enum{}
+	}
+	c.enumByDir[dir][ed.Name] = e
+	c.enumAllByName[ed.Name] = append(c.enumAllByName[ed.Name], dirEnum{dir: dir, enum: e})
 	c.enumNode[ed] = e
 
 	for i, vd := range ed.Values {
@@ -194,6 +230,59 @@ func (c *compiler) buildOneof(od *onklang.OneofDecl, field *onkir.Field, path st
 	return oneof, nil
 }
 
+// lookupMessage resolves a message name against the given directory first,
+// then falls back to a project-wide search across every other directory
+// (this is what lets cross-directory references work without an import
+// statement). Returns a non-nil error only for a genuine ambiguity - the
+// same name declared in more than one *other* directory; "not found" is
+// signaled by a nil message and nil error so callers can phrase their own
+// "unresolved ..." message.
+func (c *compiler) lookupMessage(dir, name string) (*onkir.Message, error) {
+	if m, ok := c.msgByDir[dir][name]; ok {
+		return m, nil
+	}
+	matches := c.msgAllByName[name]
+	switch len(matches) {
+	case 0:
+		return nil, nil
+	case 1:
+		return matches[0].msg, nil
+	default:
+		return nil, fmt.Errorf("ambiguous type %q found in multiple directories: %s", name, dirsOfMsg(matches))
+	}
+}
+
+func (c *compiler) lookupEnum(dir, name string) (*onkir.Enum, error) {
+	if e, ok := c.enumByDir[dir][name]; ok {
+		return e, nil
+	}
+	matches := c.enumAllByName[name]
+	switch len(matches) {
+	case 0:
+		return nil, nil
+	case 1:
+		return matches[0].enum, nil
+	default:
+		return nil, fmt.Errorf("ambiguous type %q found in multiple directories: %s", name, dirsOfEnum(matches))
+	}
+}
+
+func dirsOfMsg(matches []dirMsg) string {
+	dirs := make([]string, len(matches))
+	for i, m := range matches {
+		dirs[i] = m.dir
+	}
+	return strings.Join(dirs, ", ")
+}
+
+func dirsOfEnum(matches []dirEnum) string {
+	dirs := make([]string, len(matches))
+	for i, m := range matches {
+		dirs[i] = m.dir
+	}
+	return strings.Join(dirs, ", ")
+}
+
 func (c *compiler) resolveType(t *onklang.TypeRef, path string, line int) (*onkir.Type, error) {
 	if t.IsMap {
 		keyKind, ok := onkir.ParseScalarKind(t.MapKey)
@@ -210,10 +299,20 @@ func (c *compiler) resolveType(t *onklang.TypeRef, path string, line int) (*onki
 	if scalar, ok := onkir.ParseScalarKind(t.Name); ok {
 		return &onkir.Type{Kind: onkir.KindScalar, Scalar: scalar}, nil
 	}
-	if m, ok := c.msgByName[t.Name]; ok {
+
+	dir := filepath.Dir(path)
+	m, err := c.lookupMessage(dir, t.Name)
+	if err != nil {
+		return nil, &Error{Path: path, Line: line, Msg: err.Error()}
+	}
+	if m != nil {
 		return &onkir.Type{Kind: onkir.KindMessage, Message: m}, nil
 	}
-	if e, ok := c.enumByName[t.Name]; ok {
+	e, err := c.lookupEnum(dir, t.Name)
+	if err != nil {
+		return nil, &Error{Path: path, Line: line, Msg: err.Error()}
+	}
+	if e != nil {
 		return &onkir.Type{Kind: onkir.KindEnum, Enum: e}, nil
 	}
 	return nil, &Error{Path: path, Line: line, Msg: fmt.Sprintf("unresolved type %q", t.Name)}
@@ -238,12 +337,20 @@ func (c *compiler) buildService(sd *onklang.ServiceDecl, f *onkir.File, path str
 }
 
 func (c *compiler) buildMethod(rd *onklang.RPCDecl, s *onkir.Service, path string) (*onkir.Method, error) {
-	req, ok := c.msgByName[rd.RequestType]
-	if !ok {
+	dir := filepath.Dir(path)
+
+	req, err := c.lookupMessage(dir, rd.RequestType)
+	if err != nil {
+		return nil, &Error{Path: path, Line: rd.Line, Msg: err.Error()}
+	}
+	if req == nil {
 		return nil, &Error{Path: path, Line: rd.Line, Msg: fmt.Sprintf("unresolved request type %q", rd.RequestType)}
 	}
-	resp, ok := c.msgByName[rd.ResponseType]
-	if !ok {
+	resp, err := c.lookupMessage(dir, rd.ResponseType)
+	if err != nil {
+		return nil, &Error{Path: path, Line: rd.Line, Msg: err.Error()}
+	}
+	if resp == nil {
 		return nil, &Error{Path: path, Line: rd.Line, Msg: fmt.Sprintf("unresolved response type %q", rd.ResponseType)}
 	}
 	headers, err := c.buildHeaders(rd.Headers, path)
@@ -262,8 +369,11 @@ func (c *compiler) buildMethod(rd *onklang.RPCDecl, s *onkir.Service, path strin
 	}
 
 	for _, errName := range rd.ErrorTypes {
-		errMsg, ok := c.msgByName[errName]
-		if !ok {
+		errMsg, err := c.lookupMessage(dir, errName)
+		if err != nil {
+			return nil, &Error{Path: path, Line: rd.Line, Msg: err.Error()}
+		}
+		if errMsg == nil {
 			return nil, &Error{Path: path, Line: rd.Line, Msg: fmt.Sprintf("unresolved error type %q", errName)}
 		}
 		method.ErrorTypes = append(method.ErrorTypes, errMsg)

@@ -318,6 +318,62 @@ func TestCompileErrors(t *testing.T) {
 	}
 }
 
+func TestCompileAllowsSameMessageNameInDifferentDirectories(t *testing.T) {
+	sources := []Source{
+		{Path: "booking/dashboard/v1/models.onk", AST: parseOrFatal(t, "message GetDashboardRequest {\n  id: string\n}\n")},
+		{Path: "crm/dashboard/v1/models.onk", AST: parseOrFatal(t, "message GetDashboardRequest {\n  name: string\n}\n")},
+	}
+	pkg, err := Compile(sources)
+	if err != nil {
+		t.Fatalf("expected same-named messages in different directories to compile, got: %v", err)
+	}
+	booking := findMessage(pkg.Files[0], "GetDashboardRequest")
+	crm := findMessage(pkg.Files[1], "GetDashboardRequest")
+	if booking == nil || crm == nil {
+		t.Fatalf("expected both GetDashboardRequest messages to be found")
+	}
+	if len(booking.Fields) != 1 || booking.Fields[0].Name != "id" {
+		t.Fatalf("unexpected booking GetDashboardRequest fields: %+v", booking.Fields)
+	}
+	if len(crm.Fields) != 1 || crm.Fields[0].Name != "name" {
+		t.Fatalf("unexpected crm GetDashboardRequest fields: %+v", crm.Fields)
+	}
+}
+
+func TestCompileResolvesUniqueCrossDirectoryReferenceByName(t *testing.T) {
+	sources := []Source{
+		{Path: "common/pagination/v1/models.onk", AST: parseOrFatal(t, "message PageInfo {\n  next: string\n}\n")},
+		{Path: "hub/business/v1/models.onk", AST: parseOrFatal(t, "message ListBusinessesResponse {\n  page: PageInfo\n}\n")},
+	}
+	pkg, err := Compile(sources)
+	if err != nil {
+		t.Fatalf("unexpected compile error resolving cross-directory reference: %v", err)
+	}
+	resp := findMessage(pkg.Files[1], "ListBusinessesResponse")
+	if resp == nil {
+		t.Fatalf("ListBusinessesResponse not found")
+	}
+	pageField := resp.Fields[0]
+	if pageField.Type.Kind != onkir.KindMessage || pageField.Type.Message.Name != "PageInfo" {
+		t.Fatalf("expected page field to resolve to the PageInfo message from a different directory, got: %+v", pageField.Type)
+	}
+}
+
+func TestCompileErrorsOnAmbiguousCrossDirectoryReference(t *testing.T) {
+	sources := []Source{
+		{Path: "crm/settings/v1/models.onk", AST: parseOrFatal(t, "message Settings {\n  a: string\n}\n")},
+		{Path: "support/settings/v1/models.onk", AST: parseOrFatal(t, "message Settings {\n  b: string\n}\n")},
+		{Path: "erp/warehouse/v1/models.onk", AST: parseOrFatal(t, "message Warehouse {\n  settings: Settings\n}\n")},
+	}
+	_, err := Compile(sources)
+	if err == nil {
+		t.Fatalf("expected an ambiguous type error, got nil")
+	}
+	if !strings.Contains(err.Error(), "ambiguous type") {
+		t.Fatalf("expected error to mention ambiguity, got: %q", err.Error())
+	}
+}
+
 func TestCompileNestedMessagesAndEnums(t *testing.T) {
 	src := `
 message Outer {
