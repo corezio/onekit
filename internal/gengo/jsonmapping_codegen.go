@@ -281,7 +281,7 @@ func writeInt64UnmarshalAssignments(p *Printer, c fieldCategories) {
 	for _, f := range c.int64Reps {
 		goName := PascalCase(f.Name)
 		p.P("if aux.", goName, " != nil {")
-		p.P("m.", goName, " = make([]", GoFieldType(f.Type), ", len(aux.", goName, "))")
+		p.P("m.", goName, " = make([]", p.GoFieldType(f.Type), ", len(aux.", goName, "))")
 		p.P("for i, s := range aux.", goName, " {")
 		if f.Type.Scalar == onkir.ScalarUint64 {
 			p.P("v, err := strconv.ParseUint(s, 10, 64)")
@@ -300,7 +300,7 @@ func writeInt64UnmarshalAssignments(p *Printer, c fieldCategories) {
 func writeEnumUnmarshalAssignments(p *Printer, c fieldCategories) {
 	for _, f := range c.enums {
 		goName := PascalCase(f.Name)
-		p.P("m.", goName, " = ", GoFieldType(f.Type), "(aux.", goName, ")")
+		p.P("m.", goName, " = ", p.GoFieldType(f.Type), "(aux.", goName, ")")
 	}
 }
 
@@ -350,7 +350,7 @@ func writeFlattenUnmarshalAssignments(p *Printer, c fieldCategories) {
 	for _, f := range c.flattens {
 		goName := PascalCase(f.Name)
 		prefix, _ := flattenPrefix(f)
-		childType := GoFieldType(f.Type)
+		childType := p.GoFieldType(f.Type)
 		p.P("childRaw := map[string]json.RawMessage{}")
 		p.P("hasChild := false")
 		p.P("for k, v := range raw {")

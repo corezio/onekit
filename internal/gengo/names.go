@@ -54,21 +54,6 @@ func GoScalarType(k onkir.ScalarKind) string {
 	}
 }
 
-func GoFieldType(t *onkir.Type) string {
-	switch t.Kind {
-	case onkir.KindScalar:
-		return GoScalarType(t.Scalar)
-	case onkir.KindMessage:
-		return "*" + t.Message.Name
-	case onkir.KindEnum:
-		return t.Enum.Name
-	case onkir.KindMap:
-		return "map[" + GoScalarType(t.MapKey) + "]" + GoFieldType(t.MapValue)
-	default:
-		return "any"
-	}
-}
-
 func OneofInterfaceName(msg *onkir.Message, field *onkir.Field) string {
 	return msg.Name + PascalCase(field.Name)
 }

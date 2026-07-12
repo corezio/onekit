@@ -108,7 +108,7 @@ func writeSSERoute(p *Printer, s *onkir.Service, m *onkir.Method) {
 	fullPath := s.BasePath + path
 
 	p.P(`mux.HandleFunc("`, upperVerb(verb), " ", fullPath, `", func(w http.ResponseWriter, r *http.Request) {`)
-	p.P("req := new(", m.Request.Name, ")")
+	p.P("req := new(", p.MessageTypeName(m.Request), ")")
 
 	writePathParamBinding(p, path, m.Request)
 	writeQueryParamBinding(p, m.Request)
@@ -130,7 +130,7 @@ func writeSSERoute(p *Printer, s *onkir.Service, m *onkir.Method) {
 	p.P("}")
 	p.P("switch e := err.(type) {")
 	for _, errType := range m.ErrorTypes {
-		p.P("case *", errType.Name, ":")
+		p.P("case *", p.MessageTypeName(errType), ":")
 		p.P(`_ = sender.SendWithEvent("error", e)`)
 	}
 	p.P("default:")
@@ -223,7 +223,8 @@ func writeSSEClientMethod(p *Printer, s *onkir.Service, m *onkir.Method) {
 	fullPath := s.BasePath + path
 
 	p.P("func (c *", s.Name, "Client) ", PascalCase(m.Name),
-		"(ctx context.Context, req *", m.Request.Name, ") (*EventStream[", m.Response.Name, "], error) {")
+		"(ctx context.Context, req *", p.MessageTypeName(m.Request), ") (*EventStream[",
+		p.MessageTypeName(m.Response), "], error) {")
 
 	p.P("path := ", fmt.Sprintf("%q", fullPath))
 	for _, paramName := range pathParamNames(path) {
@@ -260,7 +261,7 @@ func writeSSEClientMethod(p *Printer, s *onkir.Service, m *onkir.Method) {
 			status = code
 		}
 		p.P(fmt.Sprintf("if resp.StatusCode == %d {", status))
-		p.P("e := new(", errType.Name, ")")
+		p.P("e := new(", p.MessageTypeName(errType), ")")
 		p.P("if jsonErr := json.Unmarshal(respBody, e); jsonErr == nil {")
 		p.P("return nil, e")
 		p.P("}")
@@ -269,7 +270,7 @@ func writeSSEClientMethod(p *Printer, s *onkir.Service, m *onkir.Method) {
 	p.P(`return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(respBody))`)
 	p.P("}")
 
-	p.P("return newEventStream[", m.Response.Name, "](resp.Body), nil")
+	p.P("return newEventStream[", p.MessageTypeName(m.Response), "](resp.Body), nil")
 	p.P("}")
 	p.P()
 }
