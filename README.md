@@ -1,211 +1,118 @@
 # onekit
 
-onekit is a protobuf-first HTTP toolkit.
+onekit is a from-scratch schema language and toolchain for building HTTP APIs — no protobuf, no buf, no protoc.
 
-Define your API once in `.proto` files, annotate the HTTP surface, and generate the boring pieces around it: Go handlers, Go clients, TypeScript clients, TypeScript server routes, Python clients, mock handlers, and OpenAPI documents.
+Define your API once in `.onk` files, and generate the boring pieces around it: Go HTTP servers, Go clients, TypeScript clients, TypeScript server routes, Python clients, and OpenAPI 3.1 documents. Every generator is built from scratch against a native intermediate representation (`internal/onkir`) — there is no `google.golang.org/protobuf` dependency anywhere in this repository.
 
-The goal is simple: keep transport code, validation, clients, and docs in sync without making every service hand-roll the same glue.
+## The `.onk` language
+
+```
+package example.users
+
+message User {
+  id: string
+  name: string
+  email: string
+}
+
+message CreateUserRequest {
+  name: string @len(2, 100)
+  email: string @email
+}
+
+service UserService {
+  base_path: "/v1"
+  headers: {
+    "X-API-Key": string @required @format("uuid")
+  }
+
+  createUser(CreateUserRequest) -> User @post("/users")
+}
+```
+
+No explicit field numbers, no wire-format baggage, no separate options-extension mechanism — attributes are just `@decorator(args)` on the field or method they apply to. The language is still v0.2 and evolving; read [`examples/onk-simple-api`](examples/onk-simple-api) for a complete, working example, or `internal/onklang` for the grammar itself.
+
+Two things `.onk` does that protobuf couldn't:
+
+- **RPC error unions** — `-> User | NotFoundError | ValidationError` makes a method's possible errors part of the schema, so generated clients can produce exhaustive, statically-typed error handling instead of "parse the body as any `*Error`."
+- **Doc comments** (`///`) that flow straight into generated Go doc comments, TS/Python docstrings, and OpenAPI descriptions.
 
 ## What it generates
 
-| Plugin | Purpose |
+| Package | Purpose |
 | --- | --- |
-| `protoc-gen-onekit-go-http` | Go HTTP server bindings, request parsing, response writing, validation, and mocks |
-| `protoc-gen-onekit-go-client` | Go clients with typed requests, typed responses, headers, and call options |
-| `protoc-gen-onekit-ts-client` | TypeScript clients for browser, Node, Deno, Bun, and Workers-style runtimes |
-| `protoc-gen-onekit-ts-server` | TypeScript route adapters built around the Web Fetch API |
-| `protoc-gen-onekit-py-client` | Python clients with typed models and typed proto error exceptions |
-| `protoc-gen-onekit-openapiv3` | OpenAPI 3.1 files from the same protobuf contracts |
+| `internal/gengo` | Go structs, validation, HTTP server (`net/http` `ServeMux`), and HTTP client |
+| `internal/gents` | TypeScript types, a `fetch`-based client, and framework-agnostic server routes (Web Fetch API) |
+| `internal/genpy` | Python `@dataclass` models, `IntEnum` enums, and a stdlib (`urllib`) client |
+| `internal/genopenapi` | OpenAPI 3.1 documents (via `pb33f/libopenapi`) |
 
-## Why use it
-
-- API contracts live in protobuf instead of being copied between backend, frontend, and docs.
-- HTTP routes, path params, query params, headers, request bodies, and responses are generated from annotations.
-- Validation rules from `buf.validate` are enforced at the HTTP boundary.
-- Generated clients know about service-level and method-level headers.
-- OpenAPI output includes routes, schemas, examples, headers, and validation metadata.
-- Local mock servers can be generated from the same service definitions.
+All four target languages/formats are driven off the same compiled schema (`internal/onkir`), produced by parsing `.onk` (`internal/onklang`) and resolving cross-references (`internal/onkcompile`).
 
 ## Quick start
-
-Clone the repo and build the plugins:
 
 ```bash
 git clone https://github.com/1homsi/onekit.git
 cd onekit
-make build
+make build          # builds ./bin/onek
 ```
 
-Run the smallest example:
+Try the example:
 
 ```bash
-cd examples/simple-api
-make demo
+cd examples/onk-simple-api
+go test ./...        # exercises the already-generated code end to end
+../../bin/onek build .   # regenerates api/*.gen.go and docs/openapi.yaml from models.onk + service.onk
 ```
 
-The example builds the local generators into `../../bin`, runs `buf generate`, and starts a Go HTTP server from generated code.
+## The `onek` CLI
 
-`bin/` is intentionally local build output and is ignored by git.
+A project is a directory with an `onekit.toml` and one or more `.onk` files:
 
-## Install the plugins
+```toml
+module = "github.com/you/yourapp/api"
 
-For use outside this repository:
+[generate.go-server]
+out = "./api"
+
+[generate.go-client]
+out = "./api"
+
+[generate.ts-client]
+out = "./web/client"
+
+[generate.openapi]
+out = "./docs"
+title = "Your API"
+version = "1.0.0"
+```
 
 ```bash
-go install github.com/1homsi/onekit/cmd/protoc-gen-onekit-go-http@latest
-go install github.com/1homsi/onekit/cmd/protoc-gen-onekit-go-client@latest
-go install github.com/1homsi/onekit/cmd/protoc-gen-onekit-ts-client@latest
-go install github.com/1homsi/onekit/cmd/protoc-gen-onekit-ts-server@latest
-go install github.com/1homsi/onekit/cmd/protoc-gen-onekit-py-client@latest
-go install github.com/1homsi/onekit/cmd/protoc-gen-onekit-openapiv3@latest
+onek check   # parse + compile every .onk file, no codegen - fast validation
+onek build   # parse + compile + generate everything configured in onekit.toml
 ```
 
-## A small contract
+`onek fmt` is not implemented yet.
 
-```proto
-syntax = "proto3";
-
-package example.users.v1;
-
-import "buf/validate/validate.proto";
-import "onekit/http/annotations.proto";
-import "onekit/http/headers.proto";
-
-service UserService {
-  option (onekit.http.service_headers) = {
-    required_headers: [
-      {
-        name: "X-API-Key"
-        type: "string"
-        format: "uuid"
-        required: true
-      }
-    ]
-  };
-
-  rpc CreateUser(CreateUserRequest) returns (User) {
-    option (onekit.http.config) = {
-      path: "/v1/users"
-      method: HTTP_METHOD_POST
-    };
-  }
-}
-
-message CreateUserRequest {
-  string name = 1 [(buf.validate.field).string = {
-    min_len: 2
-    max_len: 100
-  }];
-
-  string email = 2 [(buf.validate.field).string.email = true];
-}
-
-message User {
-  string id = 1;
-  string name = 2;
-  string email = 3;
-}
-```
-
-From that file, onekit can produce:
-
-```go
-// Server registration.
-api.RegisterUserServiceServer(userService, api.WithMux(mux))
-
-// Typed Go client.
-client := api.NewUserServiceClient(
-    "https://api.example.com",
-    api.WithUserServiceAPIKey(apiKey),
-)
-
-user, err := client.CreateUser(ctx, &api.CreateUserRequest{
-    Name:  "Moe",
-    Email: "moe@example.com",
-})
-```
-
-Generated Go servers also accept transport-wide middleware and request-ID
-propagation without coupling the generated package to a logging or tracing SDK:
-
-```go
-api.RegisterUserServiceServer(
-    userService,
-    api.WithMux(mux),
-    api.WithRequestID("X-Request-ID"),
-    api.WithMiddleware(tracingMiddleware, loggingMiddleware),
-    api.WithRequestObserver(observer),
-)
-```
-
-Middleware is applied in declaration order, with the first middleware outermost.
-Handlers and error handlers can retrieve the propagated ID with
-`api.RequestIDFromContext(r.Context())`. `WithRequestIDGenerator` can bridge IDs
-from an existing tracing or identity system. `WithRequestObserver` reports the
-protobuf service, RPC, HTTP route pattern, status code, response size, and
-duration without requiring a particular telemetry SDK. Route metadata is also
-available to middleware through `api.RequestMetadataFromContext`.
-
-```ts
-const client = new UserServiceClient("https://api.example.com", {
-  apiKey,
-});
-
-const user = await client.createUser({
-  name: "Moe",
-  email: "moe@example.com",
-});
-```
-
-## Local development
-
-Common targets:
+Install the CLI:
 
 ```bash
-make build       # build all generator binaries into ./bin
-make proto       # regenerate onekit annotation Go files
-make test-fast   # run tests without coverage
-make test        # run the full test script
-make clean       # remove ./bin
+go install github.com/1homsi/onekit/cmd/onek@latest
 ```
-
-Some examples reference plugins through `../../bin/protoc-gen-onekit-*`. Run `make build` at the repository root before generating those examples.
 
 ## Repository layout
 
 | Path | Contents |
 | --- | --- |
-| `cmd/` | protoc plugin entrypoints |
-| `internal/` | generator implementations and shared compiler helpers |
-| `proto/onekit/http/` | protobuf annotations exposed to users |
-| `http/` | generated Go package for the annotations |
-| `examples/` | small services that exercise the generators |
-| `scripts/` | test and golden-file helper scripts |
+| `cmd/onek/` | CLI entrypoint |
+| `internal/onklang/` | Lexer, parser, AST for `.onk` |
+| `internal/onkcompile/` | Compiles parsed `.onk` files into the IR, resolving cross-file type references |
+| `internal/onkir/` | The native intermediate representation every generator consumes |
+| `internal/onek/` | `onekit.toml` parsing and the `build`/`check` orchestration |
+| `internal/gengo/`, `internal/gents/`, `internal/genpy/`, `internal/genopenapi/` | The four generator backends |
+| `examples/onk-simple-api/` | A complete, working example with committed generated output |
 
-## Examples
+## Status
 
-Start with:
+This is a young project mid-migration from an earlier protobuf-based design. Ported and tested: messages (scalars, repeated, optional, maps, nested types), enums, oneofs (discriminated unions, fully typed in Go/TS), field validation (`@email`, `@uuid`, `@len`, `@range`, `@in`, `@required`), HTTP path/query param binding, required-header checks, RPC error unions with per-error-type HTTP status codes, and all four generator backends.
 
-- `examples/simple-api` for basic Go server generation
-- `examples/restful-crud` for path params and REST-style routing
-- `examples/validation-showcase` for request validation
-- `examples/python-client-demo` for Python client output
-- `examples/ts-client-demo` for TypeScript client output
-- `examples/ts-fullstack-demo` for TypeScript server and client output
-- `examples/sse-streaming` for streaming-style responses
-
-## Protobuf dependencies
-
-onekit is built around standard protobuf tooling and Buf-compatible generation. The annotations live under:
-
-```proto
-import "onekit/http/annotations.proto";
-import "onekit/http/headers.proto";
-import "onekit/http/errors.proto";
-```
-
-Validation support comes from:
-
-```proto
-import "buf/validate/validate.proto";
-```
+Not yet ported from the old protobuf-based generators: SSE streaming, and the `flatten`/`unwrap`/`int64_encoding`/`enum_encoding`/`timestamp_format`/`bytes_encoding` JSON-mapping annotations. Contributions welcome.

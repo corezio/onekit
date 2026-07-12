@@ -5,59 +5,9 @@ before:
     - go mod download
 
 builds:
-  - id: protoc-gen-onekit-go-http
-    binary: protoc-gen-onekit-go-http
-    main: ./cmd/protoc-gen-onekit-go-http
-    env: [CGO_ENABLED=0]
-    goos: [linux, darwin, windows]
-    goarch: [amd64, arm64]
-    ldflags:
-      - -s -w
-    mod_timestamp: "{{ .CommitTimestamp }}"
-
-  - id: protoc-gen-onekit-go-client
-    binary: protoc-gen-onekit-go-client
-    main: ./cmd/protoc-gen-onekit-go-client
-    env: [CGO_ENABLED=0]
-    goos: [linux, darwin, windows]
-    goarch: [amd64, arm64]
-    ldflags:
-      - -s -w
-    mod_timestamp: "{{ .CommitTimestamp }}"
-
-  - id: protoc-gen-onekit-ts-client
-    binary: protoc-gen-onekit-ts-client
-    main: ./cmd/protoc-gen-onekit-ts-client
-    env: [CGO_ENABLED=0]
-    goos: [linux, darwin, windows]
-    goarch: [amd64, arm64]
-    ldflags:
-      - -s -w
-    mod_timestamp: "{{ .CommitTimestamp }}"
-
-  - id: protoc-gen-onekit-ts-server
-    binary: protoc-gen-onekit-ts-server
-    main: ./cmd/protoc-gen-onekit-ts-server
-    env: [CGO_ENABLED=0]
-    goos: [linux, darwin, windows]
-    goarch: [amd64, arm64]
-    ldflags:
-      - -s -w
-    mod_timestamp: "{{ .CommitTimestamp }}"
-
-  - id: protoc-gen-onekit-py-client
-    binary: protoc-gen-onekit-py-client
-    main: ./cmd/protoc-gen-onekit-py-client
-    env: [CGO_ENABLED=0]
-    goos: [linux, darwin, windows]
-    goarch: [amd64, arm64]
-    ldflags:
-      - -s -w
-    mod_timestamp: "{{ .CommitTimestamp }}"
-
-  - id: protoc-gen-onekit-openapiv3
-    binary: protoc-gen-onekit-openapiv3
-    main: ./cmd/protoc-gen-onekit-openapiv3
+  - id: onek
+    binary: onek
+    main: ./cmd/onek
     env: [CGO_ENABLED=0]
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
@@ -66,16 +16,11 @@ builds:
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
-  - id: plugin-archives
+  - id: onek-archive
     ids:
-      - protoc-gen-onekit-go-http
-      - protoc-gen-onekit-go-client
-      - protoc-gen-onekit-ts-client
-      - protoc-gen-onekit-ts-server
-      - protoc-gen-onekit-py-client
-      - protoc-gen-onekit-openapiv3
+      - onek
     name_template: >-
-      onekit_plugins_
+      onekit_
       {{- .Version }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}
@@ -111,17 +56,12 @@ release:
   header: |
     ## onekit {{ .Version }}
 
-    This release includes prebuilt protoc plugins for Linux, macOS, and Windows.
+    This release includes prebuilt `onek` CLI binaries for Linux, macOS, and Windows.
   footer: |
     ## Install with Go
 
     ```bash
-    go install github.com/1homsi/onekit/cmd/protoc-gen-onekit-go-http@v{{ .Version }}
-    go install github.com/1homsi/onekit/cmd/protoc-gen-onekit-go-client@v{{ .Version }}
-    go install github.com/1homsi/onekit/cmd/protoc-gen-onekit-ts-client@v{{ .Version }}
-    go install github.com/1homsi/onekit/cmd/protoc-gen-onekit-ts-server@v{{ .Version }}
-    go install github.com/1homsi/onekit/cmd/protoc-gen-onekit-py-client@v{{ .Version }}
-    go install github.com/1homsi/onekit/cmd/protoc-gen-onekit-openapiv3@v{{ .Version }}
+    go install github.com/1homsi/onekit/cmd/onek@v{{ .Version }}
     ```
 
     Full changelog: https://github.com/1homsi/onekit/compare/{{ .PreviousTag }}...v{{ .Version }}

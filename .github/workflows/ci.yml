@@ -9,8 +9,6 @@ on:
 
 env:
   GO_VERSION: '1.26'
-  BUF_VERSION: 'latest'
-  PROTOC_VERSION: '35.1'
 
 jobs:
   lint:
@@ -21,7 +19,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
-        
+
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
@@ -30,20 +28,14 @@ jobs:
           cache-dependency-path: |
             go.sum
             go.mod
-          
-      - name: Setup Buf
-        uses: bufbuild/buf-setup-action@v1
-        with:
-          version: ${{ env.BUF_VERSION }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.3
           args: ""
           only-new-issues: true
-          
+
       - name: Run Go fmt check
         id: fmt-check
         run: |
@@ -58,7 +50,7 @@ jobs:
           else
             echo "FMT_STATUS=OK: Well formatted" >> $GITHUB_ENV
           fi
-          
+
       - name: Run Go vet
         id: vet-check
         run: |
@@ -68,33 +60,17 @@ jobs:
             echo "VET_STATUS=FAIL: Vet issues" >> $GITHUB_ENV
             exit 1
           fi
-        
-      - name: Run Buf lint
-        id: buf-check
-        run: |
-          if buf lint proto/; then
-            echo "BUF_STATUS=OK: Proto lint passed" >> $GITHUB_ENV
-          else
-            echo "BUF_STATUS=WARN: Proto lint warnings" >> $GITHUB_ENV
-            echo "::warning::Buf lint found issues - consider fixing package versioning"
-            # Don't fail for now, just warn
-          fi
-          
+
       - name: Lint summary
         id: lint-summary
         if: always()
         run: |
           echo "Lint Summary:"
           echo "- Go Format: ${FMT_STATUS:-FAIL: Failed}"
-          echo "- Go Vet: ${VET_STATUS:-FAIL: Failed}"  
-          echo "- Buf Lint: ${BUF_STATUS:-FAIL: Failed}"
-          
+          echo "- Go Vet: ${VET_STATUS:-FAIL: Failed}"
+
           if [[ "${FMT_STATUS}" == *"OK:"* && "${VET_STATUS}" == *"OK:"* ]]; then
-            if [[ "${BUF_STATUS}" == *"OK:"* ]]; then
-              echo "status=OK: All checks passed" >> $GITHUB_OUTPUT
-            else
-              echo "status=WARN: Passed with warnings" >> $GITHUB_OUTPUT
-            fi
+            echo "status=OK: All checks passed" >> $GITHUB_OUTPUT
           else
             echo "status=FAIL: Some checks failed" >> $GITHUB_OUTPUT
           fi
@@ -115,7 +91,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
-        
+
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
@@ -124,31 +100,22 @@ jobs:
           cache-dependency-path: |
             go.sum
             go.mod
-          
-      - name: Setup Protoc
-        uses: arduino/setup-protoc@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
         with:
-          version: ${{ env.PROTOC_VERSION }}
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: Setup Buf
-        uses: bufbuild/buf-setup-action@v1
-        with:
-          version: ${{ env.BUF_VERSION }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: Install dependencies
-        run: |
-          go mod download
-          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-          
-      - name: Build plugins
+          node-version: '24'
+
+      - name: Install TypeScript compiler
+        run: npm install -g typescript
+
+      - name: Build binaries
         run: make build
-        
+
       - name: Run tests
         run: ./scripts/run_tests.sh ${{ matrix.test-args }}
         shell: bash
-        
+
   coverage:
     name: Coverage Analysis
     runs-on: ubuntu-latest
@@ -168,34 +135,31 @@ jobs:
             go.sum
             go.mod
 
-      - name: Setup Protoc
-        uses: arduino/setup-protoc@v3
+      - name: Setup Node
+        uses: actions/setup-node@v6
         with:
-          version: ${{ env.PROTOC_VERSION }}
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          node-version: '24'
 
-      - name: Install dependencies
-        run: |
-          go mod download
-          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+      - name: Install TypeScript compiler
+        run: npm install -g typescript
 
-      - name: Build plugins
+      - name: Build binaries
         run: make build
 
       - name: Run coverage tests
         run: ./scripts/run_tests.sh --no-race
         shell: bash
-          
+
       - name: Generate coverage badge and reports
         run: |
           coverage_file="${COVERAGE_FILE:-coverage/coverage.out}"
           if [ -f "$coverage_file" ]; then
             echo "Generating coverage reports from: $coverage_file"
-            
+
             # Get total coverage percentage
             total_coverage=$(go tool cover -func="$coverage_file" | grep "total:" | awk '{print $3}')
             echo "Total coverage: $total_coverage"
-            
+
             # Create a simple coverage badge
             coverage_num=$(echo "$total_coverage" | sed 's/%//')
             color="red"
@@ -204,11 +168,11 @@ jobs:
             elif (( $(echo "$coverage_num >= 60" | bc -l) )); then
               color="yellow"
             fi
-            
+
             # Generate badge URL
             badge_url="https://img.shields.io/badge/coverage-${total_coverage}-${color}"
             echo "Coverage badge URL: $badge_url"
-            
+
             # Save badge info for later use
             echo "COVERAGE_PERCENTAGE=$total_coverage" >> $GITHUB_ENV
             echo "COVERAGE_BADGE_URL=$badge_url" >> $GITHUB_ENV
@@ -216,7 +180,7 @@ jobs:
             echo "FAIL: No coverage file found for badge generation"
             exit 1
           fi
-          
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7
         with:
@@ -225,7 +189,7 @@ jobs:
           name: codecov-umbrella
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
-          
+
       - name: Upload coverage reports
         uses: actions/upload-artifact@v7
         with:
@@ -255,13 +219,13 @@ jobs:
           name: coverage-reports
           path: ./
         continue-on-error: true  # Handle missing artifacts gracefully
-          
+
       - name: Setup Go for coverage analysis
         uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
-          
+
       - name: Report coverage target
         run: |
           coverage_file="coverage/coverage.out"
@@ -269,9 +233,9 @@ jobs:
             # Extract total coverage percentage using go tool cover
             total_coverage=$(go tool cover -func="$coverage_file" | grep "total:" | awk '{print $3}')
             coverage_num=$(echo "$total_coverage" | sed 's/%//')
-            
+
             echo "Coverage: ${total_coverage}"
-            
+
             # Report target (85%). This job is informational and does not fail CI.
             threshold=85
             if [ "${coverage_num%.*}" -ge "$threshold" ]; then
@@ -285,7 +249,7 @@ jobs:
             echo "WARN: No coverage file found"
             echo "COVERAGE_STATUS=WARN: No coverage" >> $GITHUB_ENV
           fi
-          
+
       - name: Update commit status
         if: github.event_name == 'pull_request'
         continue-on-error: true  # Don't fail on status update issues
@@ -306,7 +270,7 @@ jobs:
               console.log('Failed to update commit status:', error.message);
               // Don't fail the job
             }
-          
+
   build:
     name: Build Binaries
     runs-on: ubuntu-latest
@@ -314,7 +278,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
-        
+
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
@@ -323,146 +287,26 @@ jobs:
           cache-dependency-path: |
             go.sum
             go.mod
-          
-      - name: Build all plugins
+
+      - name: Build all binaries
         run: |
           make build
-          
-      - name: Test plugin execution
+
+      - name: Test binary execution
         run: |
-          for plugin in \
-            protoc-gen-onekit-go-http \
-            protoc-gen-onekit-go-client \
-            protoc-gen-onekit-ts-client \
-            protoc-gen-onekit-ts-server \
-            protoc-gen-onekit-py-client \
-            protoc-gen-onekit-openapiv3
-          do
-            test -x "./bin/$plugin"
-          done
-          
+          test -x "./bin/onek"
+          ./bin/onek check examples/onk-simple-api
+
       - name: Upload binaries
         uses: actions/upload-artifact@v7
         with:
-          name: plugin-binaries
+          name: onek-binary
           path: bin/
-          
-  integration:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-        
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-          cache-dependency-path: |
-            go.sum
-            go.mod
-          
-      - name: Setup Protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          version: ${{ env.PROTOC_VERSION }}
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-          
-      - name: Install protoc-gen-go dependency
-        run: |
-          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-          
-      - name: Download binaries
-        uses: actions/download-artifact@v8
-        with:
-          name: plugin-binaries
-          path: bin/
-          
-      - name: Make binaries executable
-        run: chmod +x bin/*
-        
-      - name: Run integration test with sample proto files
-        run: |
-          # Ensure Go bin directory is in PATH for protoc-gen-go
-          export PATH=$(go env GOPATH)/bin:$PATH
-          
-          # Test all plugins with sample proto files
-          export PATH=$PWD/bin:$PATH
-          
-          # Verify protoc-gen-go is available
-          if ! which protoc-gen-go; then
-            echo "protoc-gen-go not found in PATH"
-            exit 1
-          fi
-          
-          # Create test directory
-          mkdir -p integration-test-output
-          
-          echo "Testing all plugins with http_verbs_comprehensive.proto (has services and annotations)..."
-          protoc \
-            --plugin=protoc-gen-onekit-go-http=bin/protoc-gen-onekit-go-http \
-            --plugin=protoc-gen-onekit-go-client=bin/protoc-gen-onekit-go-client \
-            --plugin=protoc-gen-onekit-ts-client=bin/protoc-gen-onekit-ts-client \
-            --plugin=protoc-gen-onekit-ts-server=bin/protoc-gen-onekit-ts-server \
-            --plugin=protoc-gen-onekit-py-client=bin/protoc-gen-onekit-py-client \
-            --plugin=protoc-gen-onekit-openapiv3=bin/protoc-gen-onekit-openapiv3 \
-            --go_out=integration-test-output \
-            --go_opt=paths=source_relative \
-            --onekit-go-http_out=integration-test-output \
-            --onekit-go-http_opt=paths=source_relative \
-            --onekit-go-client_out=integration-test-output \
-            --onekit-go-client_opt=paths=source_relative \
-            --onekit-ts-client_out=integration-test-output \
-            --onekit-ts-client_opt=paths=source_relative \
-            --onekit-ts-server_out=integration-test-output \
-            --onekit-ts-server_opt=paths=source_relative \
-            --onekit-py-client_out=integration-test-output \
-            --onekit-py-client_opt=paths=source_relative \
-            --onekit-openapiv3_out=integration-test-output \
-            --proto_path=internal/httpgen/testdata/proto \
-            --proto_path=proto \
-            http_verbs_comprehensive.proto
-
-          # Debug: List all generated files
-          echo "Generated files:"
-          find integration-test-output -type f | sort
-
-          echo "Checking generated outputs..."
-          test -f integration-test-output/http_verbs_comprehensive.pb.go
-          test -f integration-test-output/http_verbs_comprehensive_http.pb.go
-          test -f integration-test-output/http_verbs_comprehensive_http_binding.pb.go
-          test -f integration-test-output/http_verbs_comprehensive_http_config.pb.go
-          test -f integration-test-output/http_verbs_comprehensive_client.pb.go
-          test -f integration-test-output/http_verbs_comprehensive_client.ts
-          test -f integration-test-output/http_verbs_comprehensive_server.ts
-          test -f integration-test-output/http_verbs_comprehensive_client.py
-          test "$(find integration-test-output -name '*.openapi.yaml' | wc -l)" -gt 0
-          
-      - name: Compile generated code
-        run: |
-          cd integration-test-output
-          go mod init github.com/1homsi/onekit/internal/httpgen/testdata/generated
-          go mod edit -replace github.com/1homsi/onekit=..
-          go mod tidy
-          go build ./...
-
-          npx --yes -p typescript@latest tsc --noEmit --target es2022 --module esnext \
-            http_verbs_comprehensive_client.ts \
-            http_verbs_comprehensive_server.ts
-
-          python3 -m py_compile http_verbs_comprehensive_client.py
 
   status-check:
     name: PR Status Summary
     runs-on: ubuntu-latest
-    needs: [lint, test, coverage-check, build, integration]
+    needs: [lint, test, coverage-check, build]
     if: always() && github.event_name == 'pull_request'
     permissions:
       contents: read
@@ -478,15 +322,14 @@ jobs:
               repo: context.repo.repo,
               ref: context.payload.pull_request.head.sha
             });
-            
+
             const jobs = {
               lint: '${{ needs.lint.result }}',
-              test: '${{ needs.test.result }}', 
+              test: '${{ needs.test.result }}',
               coverage: '${{ needs.coverage-check.result }}',
-              build: '${{ needs.build.result }}',
-              integration: '${{ needs.integration.result }}'
+              build: '${{ needs.build.result }}'
             };
-            
+
             let summary = '## CI Pipeline Status\n\n';
 
             for (const [job, status] of Object.entries(jobs)) {
@@ -498,19 +341,19 @@ jobs:
             summary += '\n---\n';
             summary += '**Coverage Report**: Available in checks above\n';
             summary += '**Artifacts**: Test results and coverage reports uploaded\n';
-            
+
             // Post comment on PR
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.pull_request.number
             });
-            
-            const botComment = comments.find(comment => 
-              comment.user.login === 'github-actions[bot]' && 
+
+            const botComment = comments.find(comment =>
+              comment.user.login === 'github-actions[bot]' &&
               comment.body.includes('CI Pipeline Status')
             );
-            
+
             if (botComment) {
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,

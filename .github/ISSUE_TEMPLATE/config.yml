@@ -7,7 +7,7 @@ contact_links:
     url: https://github.com/1homsi/onekit/security/advisories/new
     about: Report security vulnerabilities privately
   - name: Documentation
-    url: https://github.com/1homsi/onekit/tree/main/docs
+    url: https://github.com/1homsi/onekit#readme
     about: Read the documentation before opening an issue
   - name: Examples
     url: https://github.com/1homsi/onekit/tree/main/examples

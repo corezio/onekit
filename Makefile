@@ -21,7 +21,6 @@ help:
 	@echo "  lint             Run golangci-lint"
 	@echo "  lint-fix         Run golangci-lint with auto-fix"
 	@echo "  list-binaries    Show generator binary targets"
-	@echo "  proto            Regenerate onekit annotation Go files"
 	@echo "  test             Run full test script"
 	@echo "  test-fast        Run fast test script"
 	@echo ""
@@ -81,18 +80,6 @@ install-binaries:
 		echo "Installing $$binary..."; \
 		go install ./$(CMD_DIR)/$$binary; \
 	done
-
-.PHONY: proto
-proto:
-	@echo "Generating Go code from proto files..."
-	@protoc --go_out=. --go_opt=module=github.com/1homsi/onekit \
-		--go_opt=Monekit/http/annotations.proto=github.com/1homsi/onekit/http \
-		--go_opt=Monekit/http/headers.proto=github.com/1homsi/onekit/http \
-		--go_opt=Monekit/http/errors.proto=github.com/1homsi/onekit/http \
-		--proto_path=. \
-		proto/onekit/http/annotations.proto \
-		proto/onekit/http/headers.proto \
-		proto/onekit/http/errors.proto
 
 .PHONY: fmt
 fmt:
