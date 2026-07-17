@@ -70,6 +70,7 @@ A project is a directory with an `onekit.toml` and one or more `.onk` files:
 
 ```toml
 module = "github.com/you/yourapp/api"
+route_prefix = "/api"
 
 [generate.go-server]
 out = "./api"
@@ -85,6 +86,15 @@ out = "./docs"
 title = "Your API"
 version = "1.0.0"
 ```
+
+`route_prefix` is optional. It prepends a public HTTP prefix to every generated
+server, client, and OpenAPI route without changing generated package or import
+paths. For example, schemas under `hub/business/v1` still generate into
+`hub/business/v1`, while their routes start with `/api/hub/business/v1`.
+
+The prefix must be a canonical literal URL path such as `/api` or
+`/api/internal`: it must start with `/`, must not end with `/`, and cannot
+contain query strings, fragments, percent escapes, or path parameters.
 
 ```bash
 onek check   # parse + compile every .onk file, no codegen - fast validation

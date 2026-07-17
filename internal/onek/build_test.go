@@ -87,6 +87,40 @@ func TestCheckFailsOnUnresolvedType(t *testing.T) {
 	}
 }
 
+func TestLoadConfigValidatesRoutePrefix(t *testing.T) {
+	for _, prefix := range []string{"api", "/", "/api/", "//api", "/api/../v1", "/api?version=1", "/api%2Fv1", "/api/{tenant}"} {
+		t.Run(prefix, func(t *testing.T) {
+			dir := t.TempDir()
+			config := "module = \"example.com/api\"\nroute_prefix = \"" + prefix + "\"\n"
+			writeTestFile(t, filepath.Join(dir, "onekit.toml"), config)
+			if _, err := LoadConfig(dir); err == nil {
+				t.Fatalf("LoadConfig unexpectedly accepted route_prefix %q", prefix)
+			}
+		})
+	}
+
+	dir := t.TempDir()
+	config := "module = \"example.com/api\"\nroute_prefix = \"/api/internal\"\n"
+	writeTestFile(t, filepath.Join(dir, "onekit.toml"), config)
+	cfg, err := LoadConfig(dir)
+	if err != nil {
+		t.Fatalf("LoadConfig rejected valid route_prefix: %v", err)
+	}
+	if cfg.RoutePrefix != "/api/internal" {
+		t.Fatalf("route prefix = %q", cfg.RoutePrefix)
+	}
+}
+
+func TestCheckValidatesRoutePrefixWhenConfigExists(t *testing.T) {
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "onekit.toml"), "route_prefix = \"api\"\n")
+	writeTestFile(t, filepath.Join(dir, "models.onk"), modelsOnk)
+
+	if err := Check(dir); err == nil {
+		t.Fatal("Check unexpectedly accepted invalid route_prefix")
+	}
+}
+
 func TestBuildGeneratesWorkingGoCode(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go toolchain not available")

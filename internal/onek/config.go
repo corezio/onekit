@@ -1,9 +1,12 @@
 package onek
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -29,8 +32,9 @@ type GenerateConfig struct {
 }
 
 type Config struct {
-	Module   string         `toml:"module"`
-	Generate GenerateConfig `toml:"generate"`
+	Module      string         `toml:"module"`
+	RoutePrefix string         `toml:"route_prefix"`
+	Generate    GenerateConfig `toml:"generate"`
 
 	dir string
 }
@@ -48,8 +52,27 @@ func LoadConfig(dir string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
+	if routeErr := validateRoutePrefix(cfg.RoutePrefix); routeErr != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, routeErr)
+	}
 	cfg.dir = dir
 	return &cfg, nil
+}
+
+func validateRoutePrefix(prefix string) error {
+	if prefix == "" {
+		return nil
+	}
+	if !strings.HasPrefix(prefix, "/") {
+		return errors.New("route_prefix must start with /")
+	}
+	if prefix == "/" {
+		return errors.New("route_prefix must not be /; omit it instead")
+	}
+	if path.Clean(prefix) != prefix || strings.ContainsAny(prefix, "?#%{}") {
+		return errors.New("route_prefix must be a canonical literal URL path")
+	}
+	return nil
 }
 
 func (c *Config) resolve(path string) string {

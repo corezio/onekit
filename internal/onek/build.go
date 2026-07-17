@@ -109,6 +109,25 @@ func applyDefaultBasePaths(pkg *onkir.Package, schemaRoot string) error {
 	return nil
 }
 
+// applyRoutePrefix prepends the configured public HTTP prefix after service
+// base paths have been resolved. Applying it to the shared IR keeps every
+// generator backend in lockstep while leaving package layout and imports
+// relative to the schema root.
+func applyRoutePrefix(pkg *onkir.Package, prefix string) {
+	if prefix == "" {
+		return
+	}
+	for _, f := range pkg.Files {
+		for _, service := range f.Services {
+			if service.BasePath == "/" {
+				service.BasePath = prefix
+				continue
+			}
+			service.BasePath = prefix + service.BasePath
+		}
+	}
+}
+
 // sourceGroup is one compiled schema directory: every .onk file directly
 // under it, merged into a single onkir.File for generation. Each directory
 // maps 1:1 to one generated Go/TS/Python package - the same "one service per
@@ -190,6 +209,15 @@ func groupByDirectory(pkg *onkir.Package, schemaRoot string) (*sourceIndex, erro
 // Check parses and compiles every .onk file under dir without generating
 // any output, returning the first error encountered.
 func Check(dir string) error {
+	configPath := filepath.Join(dir, configFileName)
+	if _, statErr := os.Stat(configPath); statErr == nil {
+		if _, configErr := LoadConfig(dir); configErr != nil {
+			return configErr
+		}
+	} else if !os.IsNotExist(statErr) {
+		return fmt.Errorf("stat %s: %w", configPath, statErr)
+	}
+
 	files, err := discoverOnkFiles(dir)
 	if err != nil {
 		return err
@@ -262,6 +290,7 @@ func Build(dir string) error {
 	if err != nil {
 		return err
 	}
+	applyRoutePrefix(pkg, cfg.RoutePrefix)
 	idx, err := groupByDirectory(pkg, dir)
 	if err != nil {
 		return err
